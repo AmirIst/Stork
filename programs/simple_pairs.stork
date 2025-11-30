@@ -1,0 +1,1 @@
+let point = (,10,20) in first(point)

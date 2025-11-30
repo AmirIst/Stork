@@ -1,0 +1,4 @@
+let point = (,3,4) in
+let x = first(point) in
+let y = second(point) in
+x * x + y * y

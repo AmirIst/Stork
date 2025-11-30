@@ -1,0 +1,2 @@
+let condition = true in
+while condition do print "Variable condition works"

@@ -1,0 +1,3 @@
+let numbers = [1, 2, 3, 4, 5] in
+let isEven = fn x => (x % 2) == 0 in
+filter(isEven)(numbers)

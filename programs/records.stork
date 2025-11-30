@@ -1,0 +1,2 @@
+let person = {name: "John", age: 30} in
+person.name

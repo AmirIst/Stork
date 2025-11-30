@@ -1,0 +1,6 @@
+// Test parameterized constructors
+type Option = Some value | None in
+let maybe = Some 42 in
+match maybe with
+Some x => x * 2
+None => 0

@@ -1,0 +1,2 @@
+let point = (3, 4, 5) in
+_1(point) + _2(point)
