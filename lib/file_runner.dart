@@ -2,24 +2,37 @@ import 'dart:io';
 import 'simple_parser.dart';
 import 'evaluator.dart';
 import 'environment.dart';
+import 'type_checker.dart';
+
 
 class FileRunner {
   static void runFile(String filename) {
+    final file = File(filename);
+    final content = file.readAsStringSync();
     final parser = SimpleParser();
     final evaluator = Evaluator();
+    final typeChecker = TypeChecker();
     final env = Environment();
     
     try {
       final file = File(filename);
       final content = file.readAsStringSync();
-      
-      // Remove comments and clean up the content
+      final expr = parser.parse(content);
+
       final cleanedContent = _removeComments(content);
+
+      try {
+        typeChecker.checkProgram(expr);
+        print('✅ Type check passed');
+      } on TypeError catch (e) {
+        print('❌ Type error: $e');
+        return;
+      }
       
       // Try to parse the entire content as one expression
       try {
         final expr = parser.parse(cleanedContent);
-        final result = evaluator.evaluate(expr, env);
+        final result = evaluator.evaluate(expr, env, checkTypes: false);
         if (result != null) {
           print('Result: $result');
         }

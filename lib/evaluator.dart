@@ -1,10 +1,22 @@
 import 'ast.dart';
 import 'environment.dart';
+import 'type_checker.dart';
 
 class Evaluator {
-  dynamic evaluate(Expr expr, Environment env) {
+  final TypeChecker typeChecker = TypeChecker();
+  
+  dynamic evaluate(Expr expr, Environment env, {bool checkTypes = true}) {
+  // STATIC TYPE CHECKING - happens BEFORE evaluation
+    if (checkTypes) {
+      try {
+        typeChecker.checkProgram(expr);
+      } on TypeError catch (e) {
+        throw Exception('Static type error: $e');
+      }
+    }
+    
+    // RUNTIME EVALUATION - only if type check passes
     try {
-
       if (expr is IntLit) return expr.value;
       if (expr is BoolLit) return expr.value;
       if (expr is StringLit) return expr.value;
@@ -120,7 +132,57 @@ class Evaluator {
           };
         }
 
-        
+        if (expr.name == "cons") {
+          return (dynamic head) {
+            return (dynamic tail) {
+              if (tail is List) {
+                return [head, ...tail];
+              }
+              throw Exception('TypeError: cons expects list as second argument');
+            };
+          };
+        }
+
+        if (expr.name == "nil") {
+          return [];
+        }
+
+        if (expr.name == "head") {
+          return (dynamic list) {
+            if (list is List && list.isNotEmpty) {
+              return list[0];
+            }
+            throw Exception('TypeError: head expects non-empty list');
+          };
+        }
+
+        if (expr.name == "tail") {
+          return (dynamic list) {
+            if (list is List && list.isNotEmpty) {
+              return list.sublist(1);
+            }
+            throw Exception('TypeError: tail expects non-empty list');
+          };
+        }
+
+        if (expr.name == "first") {
+          return (dynamic pair) {
+            if (pair is List && pair.length == 2) {
+              return pair[0];
+            }
+            throw Exception('TypeError: first expects pair');
+          };
+        }
+
+        if (expr.name == "second") {
+          return (dynamic pair) {
+            if (pair is List && pair.length == 2) {
+              return pair[1];
+            }
+            throw Exception('TypeError: second expects pair');
+          };
+        }
+
         // Handle regular variable lookup
         final value = env.lookup(expr.name);
         if (value == null) {
@@ -130,14 +192,14 @@ class Evaluator {
       }
 
       if (expr is Let) {
-        final value = evaluate(expr.value, env);
+        final value = evaluate(expr.value, env, checkTypes: false);
         final newEnv = env.createChild();
         newEnv.bind(expr.varName, value);
-        return evaluate(expr.body, newEnv);
+        return evaluate(expr.body, newEnv, checkTypes: false);
       }
       
       if (expr is ReplLet) {
-        final value = evaluate(expr.value, env);
+        final value = evaluate(expr.value, env, checkTypes: false);
         env.bind(expr.varName, value);
         return value;
       }
@@ -150,25 +212,25 @@ class Evaluator {
           final newEnv = env.createChild();
           newEnv.bind(expr.funcName, recursiveFunc);
           newEnv.bind(expr.param, arg);
-          return evaluate(expr.body, newEnv);
+          return evaluate(expr.body, newEnv, checkTypes: false);
         };
         
         final newEnv = env.createChild();
         newEnv.bind(expr.funcName, recursiveFunc);
-        return evaluate(expr.inExpr, newEnv);
+        return evaluate(expr.inExpr, newEnv, checkTypes: false);
       }
       
       if (expr is Lambda) {
         return (dynamic arg) {
           final newEnv = env.createChild();
           newEnv.bind(expr.param, arg);
-          return evaluate(expr.body, newEnv);
+          return evaluate(expr.body, newEnv, checkTypes: false);
         };
       }
       
       if (expr is Apply) {
-        final function = evaluate(expr.function, env);
-        final argument = evaluate(expr.argument, env);
+        final function = evaluate(expr.function, env, checkTypes: false);
+        final argument = evaluate(expr.argument, env, checkTypes: false);
         if (function is Function) {
           return function(argument);
         }
@@ -176,17 +238,17 @@ class Evaluator {
       }
       
       if (expr is If) {
-        final condition = evaluate(expr.condition, env);
+        final condition = evaluate(expr.condition, env, checkTypes: false);
         if (condition == true) {
-          return evaluate(expr.thenBranch, env);
+          return evaluate(expr.thenBranch, env, checkTypes: false);
         } else {
-          return evaluate(expr.elseBranch, env);
+          return evaluate(expr.elseBranch, env, checkTypes: false);
         }
       }
       
       if (expr is BinaryOp) {
-        final left = evaluate(expr.left, env);
-        final right = evaluate(expr.right, env);
+        final left = evaluate(expr.left, env, checkTypes: false);
+        final right = evaluate(expr.right, env, checkTypes: false);
         
         switch (expr.operator) {
           case '+': 
@@ -228,17 +290,16 @@ class Evaluator {
           default: throw Exception('Unknown operator: "${expr.operator}"');
         }
       }
-      
 
       // CASES FOR PAIRS AND LISTS
       if (expr is Pair) {
-        final firstVal = evaluate(expr.first, env);
-        final secondVal = evaluate(expr.second, env);
+        final firstVal = evaluate(expr.first, env, checkTypes: false);
+        final secondVal = evaluate(expr.second, env, checkTypes: false);
         return [firstVal, secondVal];
       }
       
       if (expr is First) {
-        final pair = evaluate(expr.pair, env);
+        final pair = evaluate(expr.pair, env, checkTypes: false);
         if (pair is List && pair.length == 2) {
           return pair[0];
         }
@@ -246,7 +307,7 @@ class Evaluator {
       }
       
       if (expr is Second) {
-        final pair = evaluate(expr.pair, env);
+        final pair = evaluate(expr.pair, env, checkTypes: false);
         if (pair is List && pair.length == 2) {
           return pair[1];
         }
@@ -258,8 +319,8 @@ class Evaluator {
       }
       
       if (expr is Cons) {
-        final headVal = evaluate(expr.head, env);
-        final tailVal = evaluate(expr.tail, env);
+        final headVal = evaluate(expr.head, env, checkTypes: false);
+        final tailVal = evaluate(expr.tail, env, checkTypes: false);
         if (tailVal is List) {
           return [headVal, ...tailVal];
         }
@@ -267,7 +328,7 @@ class Evaluator {
       }
       
       if (expr is Head) {
-        final list = evaluate(expr.list, env);
+        final list = evaluate(expr.list, env, checkTypes: false);
         if (list is List && list.isNotEmpty) {
           return list[0];
         }
@@ -275,7 +336,7 @@ class Evaluator {
       }
       
       if (expr is Tail) {
-        final list = evaluate(expr.list, env);
+        final list = evaluate(expr.list, env, checkTypes: false);
         if (list is List && list.isNotEmpty) {
           return list.sublist(1);
         }
@@ -285,13 +346,13 @@ class Evaluator {
       if (expr is Tuple) {
         final elements = <dynamic>[];
         for (final elementExpr in expr.elements) {
-          elements.add(evaluate(elementExpr, env));
+          elements.add(evaluate(elementExpr, env, checkTypes: false));
         }
         return elements;
       }
 
       if (expr is TupleAccess) {
-        final tuple = evaluate(expr.tuple, env);
+        final tuple = evaluate(expr.tuple, env, checkTypes: false);
         if (tuple is List && expr.index - 1 < tuple.length) {
           return tuple[expr.index - 1];
         }
@@ -301,13 +362,13 @@ class Evaluator {
       if (expr is Record) {
         final record = <String, dynamic>{};
         for (final entry in expr.fields.entries) {
-          record[entry.key] = evaluate(entry.value, env);
+          record[entry.key] = evaluate(entry.value, env, checkTypes: false);
         }
         return record;
       }
 
       if (expr is RecordAccess) {
-        final record = evaluate(expr.record, env);
+        final record = evaluate(expr.record, env, checkTypes: false);
         if (record is Map && record.containsKey(expr.fieldName)) {
           return record[expr.fieldName];
         }
@@ -316,45 +377,45 @@ class Evaluator {
 
       // In the Left case:
       if (expr is Left) {
-        final value = evaluate(expr.value, env);
+        final value = evaluate(expr.value, env, checkTypes: false);
         return 'left($value)';
       }
 
       // In the Right case:
       if (expr is Right) {
-        final value = evaluate(expr.value, env);
+        final value = evaluate(expr.value, env, checkTypes: false);
         return 'right($value)';
       }
 
       if (expr is Match) {
-        final target = evaluate(expr.target, env);
+        final target = evaluate(expr.target, env, checkTypes: false);
         if (target is String && target.startsWith('left(')) {
           // Extract value from left(value)
           final value = target.substring(5, target.length - 1); // Remove 'left(' and ')'
           final newEnv = env.createChild();
           newEnv.bind(expr.leftVar, value);
-          return evaluate(expr.leftBranch, newEnv);
+          return evaluate(expr.leftBranch, newEnv, checkTypes: false);
         } else if (target is String && target.startsWith('right(')) {
           // Extract value from right(value)  
           final value = target.substring(6, target.length - 1); // Remove 'right(' and ')'
           final newEnv = env.createChild();
           newEnv.bind(expr.rightVar, value);
-          return evaluate(expr.rightBranch, newEnv);
+          return evaluate(expr.rightBranch, newEnv, checkTypes: false);
         }
         throw Exception('Match target is not a sum type');
       }
 
       if (expr is WhileLoop) {
         dynamic result;
-        while (evaluate(expr.condition, env) == true) {
-          result = evaluate(expr.body, env);
+        while (evaluate(expr.condition, env, checkTypes: false) == true) {
+          result = evaluate(expr.body, env, checkTypes: false);
         }
         return result;
       }
 
       if (expr is ForLoop) {
-        final startVal = evaluate(expr.start, env);
-        final endVal = evaluate(expr.end, env);
+        final startVal = evaluate(expr.start, env, checkTypes: false);
+        final endVal = evaluate(expr.end, env, checkTypes: false);
         
         if (startVal is! int || endVal is! int) {
           throw Exception('For loop requires integer bounds');
@@ -364,7 +425,7 @@ class Evaluator {
         for (int i = startVal; i <= endVal; i++) {
           final newEnv = env.createChild();
           newEnv.bind(expr.variable, i);
-          result = evaluate(expr.body, newEnv);
+          result = evaluate(expr.body, newEnv, checkTypes: false);
         }
         return result;
       }
@@ -377,12 +438,12 @@ class Evaluator {
 
       if (expr is ConstructorCall) {
         // Simple constructor - just return a formatted string
-        final args = expr.arguments.map((arg) => evaluate(arg, env)).toList();
+        final args = expr.arguments.map((arg) => evaluate(arg, env, checkTypes: false)).toList();
         return "${expr.constructor}(${args.join(', ')})";
       }
 
       if (expr is TypeMatch) {
-        final target = evaluate(expr.target, env);
+        final target = evaluate(expr.target, env, checkTypes: false);
         // Simple string-based pattern matching
         for (final case_ in expr.cases) {
           if (target.startsWith("${case_.constructor}(")) {
@@ -392,7 +453,7 @@ class Evaluator {
               final arg = target.substring(case_.constructor.length + 1, target.length - 1);
               newEnv.bind(case_.parameters[0], arg);
             }
-            return evaluate(case_.body, newEnv);
+            return evaluate(case_.body, newEnv, checkTypes: false);
           }
         }
         throw Exception('No matching pattern found');
@@ -400,7 +461,7 @@ class Evaluator {
       
       throw Exception('Unknown expression type: ${expr.runtimeType}');
     } catch (e) {
-      throw Exception('Evaluation error at ${expr.runtimeType}: $e');
+      throw Exception('Evaluation error: $e');
     }
   }
 }

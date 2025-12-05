@@ -1,4 +1,0 @@
-let id = fn x => x in
-let result1 = id(5) in
-let result2 = id("hello") in
-print(result1)

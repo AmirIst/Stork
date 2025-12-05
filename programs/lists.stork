@@ -1,6 +1,2 @@
-let numbers = [1, 2, 3, 4, 5] in
-let double = fn x => x * 2 in
-let rec map = fn f => fn list =>
-  if list == [] then []
-  else cons(f(head(list)))(map(f)(tail(list)))
-in map(double)(numbers)
+let mylist = cons 1 (cons 2 (cons 3 nil)) in
+head(mylist)

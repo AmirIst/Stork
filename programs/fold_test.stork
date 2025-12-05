@@ -1,3 +1,0 @@
-let numbers = [1, 2, 3, 4] in
-let add = fn a => fn b => a + b in
-fold(add)(0)(numbers)
