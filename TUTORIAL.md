@@ -1,9 +1,10 @@
-```markdown
+
 # StorkLang Tutorial
 
 ## 2.1 Language Tour
 
 ### Basic Values and Arithmetic
+
 ```rust
 5                    // Integer: 5
 true                 // Boolean: true
@@ -186,4 +187,5 @@ let isEven = fn x => (x % 2) == 0 in isEven(5)
 let square = fn x => x * x in square(5)
 
 // 5 Absolute Value
+
 let abs = fn x => if x >= 0 then x else -x in abs(-7)
