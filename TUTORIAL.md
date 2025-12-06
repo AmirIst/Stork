@@ -172,7 +172,6 @@ Write a function that returns the absolute value of a number.
 
 # Solutions
 
-## Solution 1: Triple Function
 ```rust
 // 1 Triple Function
 let triple = fn x => x * 3 in triple(4)
@@ -189,3 +188,4 @@ let square = fn x => x * x in square(5)
 // 5 Absolute Value
 
 let abs = fn x => if x >= 0 then x else -x in abs(-7)
+
