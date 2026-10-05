@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  stork-bot:
+    build: .
+    container_name: stork_german_bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      # Persistent SQLite database volume to prevent data loss on restarts
+      - ./stork_bot.db:/app/stork_bot.db

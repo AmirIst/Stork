@@ -1,0 +1,21 @@
+# Секретные ключи и токены
+.env
+
+# Локальная база данных
+stork_bot.db
+
+# Внутренние служебные файлы и скрипты
+GEMINI.md
+context/
+sessions/
+*.bat
+
+# Кэш Python и окружение
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.idea/
+.vscode/

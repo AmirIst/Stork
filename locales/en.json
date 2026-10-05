@@ -1,0 +1,45 @@
+{
+  "lang_name": "English",
+  "lang_flag": "🇬🇧",
+  "welcome": "🪶 *Hello, {name}! I am Stork*: your winged German tutor!\n\nI will help you master German smoothly and with joy:\n• 🎯 Master tricky articles (*der, die, das*)\n• 🃏 Study words Anki-style (with \"Know\", \"Review\", \"Don't know\" ratings)\n• 📝 Test your translation skills\n• 🤖 Practice speaking with an AI tutor\n\nChoose an option from the menu below 👇",
+  "menu_title": "🪶 *Stork Main Menu*",
+  "btn_articles": "🎯 Article Trainer (der/die/das)",
+  "btn_cards": "🃏 Vocabulary Flashcards (Anki)",
+  "btn_quiz": "📝 Translation Quiz",
+  "btn_ai_tutor": "🤖 Stork AI Conversation",
+  "btn_stats": "📊 My Learning Progress",
+  "btn_settings": "🌐 Change Language",
+  "btn_main_menu": "🏠 Main Menu",
+  "btn_next": "Next ➡️",
+  "btn_reveal": "👀 Show Translation",
+  
+  "btn_rate_learning": "🔴 Don't know",
+  "btn_rate_review": "🟡 Review",
+  "btn_rate_known": "🟢 Know",
+  "status_marked_learning": "📝 Word marked for learning.",
+  "status_marked_review": "🟡 Word marked for review.",
+  "status_marked_known": "🎉 Great, word mastered! (+1 point)",
+  
+  "lang_select_title": "🌐 *Choose your learning and interface language:*\n(Select your preferred language:)",
+  "lang_changed": "✅ Language successfully switched to *English* 🇬🇧!",
+  
+  "article_quiz_title": "🎯 *Article Trainer*\n\nWhich article belongs to this noun:\n👉 *{word}* ({translation})?",
+  "article_correct": "🎉 *Correct! Great job!*",
+  "article_wrong": "❌ *Oops, not quite.* Correct is: *{correct_article}*",
+  "article_card_detail": "📖 *{article} {word}* ({plural})\n💬 Meaning: {translation}\n💡 Example: _{example_de}_\n({example_tr})",
+  
+  "card_title": "🃏 *Flashcard* (Level {level})",
+  "card_word": "🇩🇪 *{article} {word}* {plural}\n\n💬 Meaning: *{translation}*\n💡 Example: _{example_de}_\n_{example_tr}_",
+  "card_prompt_recall": "_Try to recall the meaning before checking!_",
+  "card_prompt_rate": "How well do you remember this word?",
+  
+  "quiz_title": "📝 *Translation Quiz*\n\nWhat is the translation of:\n🇩🇪 *{article} {word}*?",
+  "quiz_correct": "✅ *Bullseye!* (+1 point)",
+  "quiz_wrong": "❌ Not quite. Correct translation: *{correct_tr}*",
+  
+  "stats_title": "📊 *Your Learning Progress*\n\n👤 Learner: *{name}*\n🌐 Target Language: *{lang_name}*\n⭐ Total Points: *{score}*\n🔥 Winning Streak: *{streak}*\n\n📚 *Your Vocabulary Progress:*\n🟢 Mastered (Know): *{known_words}*\n🟡 In Review: *{review_words}*\n🔴 Learning: *{learning_words}*\n📖 Total Words in Database: *{total_words}*",
+  
+  "ai_tutor_welcome": "🤖🪶 *Stork AI Conversation Mode*\n\nSend me a message in German (or ask a grammar question). I will:\n1. Gently correct any mistakes.\n2. Explain grammar clearly.\n3. Reply in German to keep our conversation going!\n\n_Send /menu to exit back to the main menu._",
+  "ai_tutor_exit": "Exited AI mode. Back to main menu!",
+  "ai_thinking": "🪶 Stork is thinking..."
+}
