@@ -8,6 +8,7 @@ from keyboards.inline import (
     get_level_selection_keyboard,
     get_category_selection_keyboard
 )
+from services.ui_helper import show_or_update_window
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -29,7 +30,8 @@ async def cb_open_filters(callback: CallbackQuery):
         "These settings automatically apply to Flashcards, Quiz, and Article Trainer!"
     )
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         f"{title}\n\n{desc}",
         reply_markup=get_filters_keyboard(level, category, lang=lang),
         parse_mode="Markdown"
@@ -43,7 +45,8 @@ async def cb_choose_level(callback: CallbackQuery):
     level, _ = await db.get_user_filters(callback.from_user.id)
 
     title = "📶 *Выбери уровень сложности:*" if lang == "ru" else "📶 *Select difficulty level:*"
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         title,
         reply_markup=get_level_selection_keyboard(level, lang=lang),
         parse_mode="Markdown"
@@ -63,7 +66,8 @@ async def cb_set_level(callback: CallbackQuery):
     await callback.answer(msg)
 
     title = "🎯 *Настройка тем и уровня сложности*" if lang == "ru" else "🎯 *Learning Level and Topic Settings*"
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         title,
         reply_markup=get_filters_keyboard(lvl_code, category, lang=lang),
         parse_mode="Markdown"
@@ -76,7 +80,8 @@ async def cb_choose_category(callback: CallbackQuery):
     _, category = await db.get_user_filters(callback.from_user.id)
 
     title = "📂 *Выбери тему слов:*" if lang == "ru" else "📂 *Select word topic:*"
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         title,
         reply_markup=get_category_selection_keyboard(category, lang=lang),
         parse_mode="Markdown"
@@ -97,7 +102,8 @@ async def cb_set_category(callback: CallbackQuery):
     await callback.answer(msg)
 
     title = "🎯 *Настройка тем и уровня сложности*" if lang == "ru" else "🎯 *Learning Level and Topic Settings*"
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         title,
         reply_markup=get_filters_keyboard(level, cat_code, lang=lang),
         parse_mode="Markdown"
@@ -114,7 +120,8 @@ async def cb_reset_filters(callback: CallbackQuery):
     await callback.answer(msg)
 
     title = "🎯 *Настройка тем и уровня сложности*" if lang == "ru" else "🎯 *Learning Level and Topic Settings*"
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         title,
         reply_markup=get_filters_keyboard("ALL", "ALL", lang=lang),
         parse_mode="Markdown"

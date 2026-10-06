@@ -7,6 +7,7 @@ from keyboards.inline import (
     get_card_keyboard,
     get_card_rated_keyboard
 )
+from services.ui_helper import show_or_update_window
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -16,7 +17,7 @@ async def send_flashcard(callback: CallbackQuery, lang: str):
     level, category = await db.get_user_filters(callback.from_user.id)
     word_data = await db.get_random_word(lang=lang, level=level, category=category)
     if not word_data:
-        await callback.message.edit_text("По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
+        await show_or_update_window(callback, "По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
         return
 
     plural_str = f"({word_data['plural']})" if word_data.get("plural") else ""
@@ -36,7 +37,8 @@ async def send_flashcard(callback: CallbackQuery, lang: str):
         f"{i18n.get('card_prompt_recall', lang)}"
     )
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_card_keyboard(word_data["id"], lang=lang, is_revealed=False),
         parse_mode="Markdown"
@@ -86,7 +88,8 @@ async def cb_reveal_card(callback: CallbackQuery):
         f"_{rate_prompt}_"
     )
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_card_keyboard(word_data["id"], lang=lang, is_revealed=True),
         parse_mode="Markdown"
@@ -128,7 +131,8 @@ async def cb_rate_card(callback: CallbackQuery):
         f"💬 {word_data['translation']}"
     )
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_card_rated_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"

@@ -11,6 +11,7 @@ from keyboards.inline import (
     get_language_keyboard,
     get_back_to_menu_keyboard
 )
+from services.ui_helper import show_or_update_window
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -54,10 +55,7 @@ async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     level, category = await db.get_user_filters(callback.from_user.id)
     text = i18n.get("menu_title", lang)
     kb = get_main_menu_keyboard(lang, level, category)
-    try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
-    except Exception:
-        await callback.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data == "menu_lang")
@@ -65,7 +63,7 @@ async def cb_menu_lang(callback: CallbackQuery):
     """Кнопка смены языка в меню"""
     lang = await db.get_user_lang(callback.from_user.id)
     text = i18n.get("lang_select_title", lang)
-    await callback.message.edit_text(text, reply_markup=get_language_keyboard(), parse_mode="Markdown")
+    await show_or_update_window(callback, text, reply_markup=get_language_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("set_lang:"))
@@ -79,7 +77,8 @@ async def cb_set_language(callback: CallbackQuery):
     menu_text = i18n.get("menu_title", selected_lang)
     full_text = f"{notice}\n\n{menu_text}"
     
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         full_text,
         reply_markup=get_main_menu_keyboard(selected_lang, level, category),
         parse_mode="Markdown"
@@ -106,7 +105,8 @@ async def cb_menu_stats(callback: CallbackQuery):
         total_words=stats["total_words"]
     )
     
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_back_to_menu_keyboard(lang),
         parse_mode="Markdown"

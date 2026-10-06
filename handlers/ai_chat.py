@@ -14,6 +14,7 @@ from keyboards.inline import (
     get_ai_dialog_welcome_keyboard,
     get_ai_in_chat_keyboard
 )
+from services.ui_helper import show_or_update_window
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -34,7 +35,8 @@ async def cb_enter_ai_mode(callback: CallbackQuery, state: FSMContext):
     else:
         text = i18n.get("ai_tutor_welcome", lang)
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_ai_dialog_welcome_keyboard(lang, has_history=has_history),
         parse_mode="Markdown"
@@ -64,7 +66,8 @@ async def cb_ai_resume(callback: CallbackQuery, state: FSMContext):
     else:
         msg = f"▶️ *Resuming conversation!* I remember our previous topic.{last_context_hint}\n\nType your message below:"
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         msg,
         reply_markup=get_ai_in_chat_keyboard(lang),
         parse_mode="Markdown"
@@ -80,7 +83,8 @@ async def cb_ai_clear(callback: CallbackQuery, state: FSMContext):
     lang = await db.get_user_lang(user_id)
     
     text = i18n.get("ai_history_cleared", lang)
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_ai_dialog_welcome_keyboard(lang, has_history=False),
         parse_mode="Markdown"

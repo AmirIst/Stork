@@ -16,6 +16,7 @@ from keyboards.inline import (
     get_exam_result_keyboard,
     get_back_to_menu_keyboard
 )
+from services.ui_helper import show_or_update_window, mark_voice_sent
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -58,7 +59,8 @@ async def cb_menu_exam(callback: CallbackQuery, state: FSMContext):
     lang = await db.get_user_lang(callback.from_user.id)
     text = i18n.get("exam_welcome", lang)
     
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_exam_levels_keyboard(lang),
         parse_mode="Markdown"
@@ -76,7 +78,8 @@ async def cb_select_exam_level(callback: CallbackQuery, state: FSMContext):
     await state.update_data(task_id=task["id"], level=task["level"])
 
     msg_text = format_exam_task_message(task, lang)
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         msg_text,
         reply_markup=get_exam_task_keyboard(lang),
         parse_mode="Markdown"
@@ -94,7 +97,8 @@ async def cb_new_exam_task(callback: CallbackQuery, state: FSMContext):
     await state.update_data(task_id=task["id"], level=task["level"])
 
     msg_text = format_exam_task_message(task, lang)
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         msg_text,
         reply_markup=get_exam_task_keyboard(lang),
         parse_mode="Markdown"
@@ -211,4 +215,5 @@ async def cb_voice_exam_sample(callback: CallbackQuery, state: FSMContext):
         caption=caption,
         parse_mode="Markdown"
     )
+    mark_voice_sent(callback.from_user.id)
     await callback.answer()

@@ -137,3 +137,45 @@ async def test_db_random_word_fetch():
     assert word["article"] in ("der", "die", "das")
     assert word["translation"]
 
+def test_ui_helper_flag_lifecycle():
+    from services.ui_helper import mark_voice_sent, has_voice_pending, clear_voice_pending
+    user_id = 999888
+    clear_voice_pending(user_id)
+    assert not has_voice_pending(user_id)
+    mark_voice_sent(user_id)
+    assert has_voice_pending(user_id)
+    clear_voice_pending(user_id)
+    assert not has_voice_pending(user_id)
+
+@pytest.mark.anyio
+async def test_show_or_update_window_repost_behavior():
+    from unittest.mock import AsyncMock, MagicMock
+    from services.ui_helper import mark_voice_sent, show_or_update_window, has_voice_pending
+
+    user_id = 777666
+    cb = MagicMock()
+    cb.from_user.id = user_id
+    cb.message = MagicMock()
+    cb.message.delete = AsyncMock()
+    cb.message.answer = AsyncMock()
+    cb.message.edit_text = AsyncMock()
+
+    # 1. При наличии отправленного голосового сообщения -> удаляет старое и шлет новое вниз
+    mark_voice_sent(user_id)
+    assert has_voice_pending(user_id)
+    await show_or_update_window(cb, text="Hello bottom", force_repost=False)
+    cb.message.delete.assert_called_once()
+    cb.message.answer.assert_called_once_with(text="Hello bottom", reply_markup=None, parse_mode="Markdown")
+    cb.message.edit_text.assert_not_called()
+    assert not has_voice_pending(user_id)
+
+    # 2. При обычном переходе (без голоса) -> быстро редактирует на месте
+    cb.message.delete.reset_mock()
+    cb.message.answer.reset_mock()
+    cb.message.edit_text.reset_mock()
+
+    await show_or_update_window(cb, text="Hello edit", force_repost=False)
+    cb.message.edit_text.assert_called_once_with(text="Hello edit", reply_markup=None, parse_mode="Markdown")
+    cb.message.delete.assert_not_called()
+    cb.message.answer.assert_not_called()
+

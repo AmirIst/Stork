@@ -7,6 +7,7 @@ from keyboards.inline import (
     get_article_keyboard,
     get_next_article_keyboard
 )
+from services.ui_helper import show_or_update_window
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -16,7 +17,7 @@ async def send_article_challenge(callback: CallbackQuery, lang: str):
     level, category = await db.get_user_filters(callback.from_user.id)
     word_data = await db.get_random_word(lang=lang, level=level, category=category)
     if not word_data:
-        await callback.message.edit_text("По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
+        await show_or_update_window(callback, "По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
         return
 
     text = i18n.get(
@@ -26,7 +27,8 @@ async def send_article_challenge(callback: CallbackQuery, lang: str):
         translation=word_data["translation"] or "..."
     )
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_article_keyboard(word_data["id"], lang=lang),
         parse_mode="Markdown"
@@ -85,7 +87,8 @@ async def cb_check_article(callback: CallbackQuery):
 
     full_response = f"{result_header}\n\n{details}"
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         full_response,
         reply_markup=get_next_article_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"

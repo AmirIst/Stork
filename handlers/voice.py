@@ -3,6 +3,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, BufferedInputFile
 from database import db
 from services.tts import synthesize_word_audio, synthesize_speech, extract_german_for_voice
+from services.ui_helper import mark_voice_sent
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -42,6 +43,7 @@ async def cb_voice_word(callback: CallbackQuery):
         caption=caption,
         parse_mode="Markdown"
     )
+    mark_voice_sent(callback.from_user.id)
     await callback.answer()
 
 @router.callback_query(F.data == "ai_voice_last")
@@ -71,4 +73,6 @@ async def cb_voice_ai_reply(callback: CallbackQuery):
         caption=caption,
         parse_mode="Markdown"
     )
+    mark_voice_sent(callback.from_user.id)
     await callback.answer()
+

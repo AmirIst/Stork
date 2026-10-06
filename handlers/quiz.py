@@ -7,6 +7,7 @@ from keyboards.inline import (
     get_quiz_keyboard,
     get_next_quiz_keyboard
 )
+from services.ui_helper import show_or_update_window
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -16,7 +17,7 @@ async def send_quiz_question(callback: CallbackQuery, lang: str):
     level, category = await db.get_user_filters(callback.from_user.id)
     quiz_data = await db.get_translation_quiz_data(lang=lang, level=level, category=category)
     if not quiz_data:
-        await callback.message.edit_text("По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
+        await show_or_update_window(callback, "По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
         return
 
     word = quiz_data["word"]
@@ -30,7 +31,8 @@ async def send_quiz_question(callback: CallbackQuery, lang: str):
         word=word["word"]
     )
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         text,
         reply_markup=get_quiz_keyboard(word["id"], options, correct, lang=lang),
         parse_mode="Markdown"
@@ -81,7 +83,8 @@ async def cb_answer_quiz(callback: CallbackQuery):
 
     full_text = f"{header}\n\n{card}"
 
-    await callback.message.edit_text(
+    await show_or_update_window(
+        callback,
         full_text,
         reply_markup=get_next_quiz_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"
