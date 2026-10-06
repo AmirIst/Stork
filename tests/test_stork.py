@@ -179,3 +179,62 @@ async def test_show_or_update_window_repost_behavior():
     cb.message.delete.assert_not_called()
     cb.message.answer.assert_not_called()
 
+def test_placement_questions_integrity():
+    from services.placement_test import PLACEMENT_QUESTIONS
+    assert len(PLACEMENT_QUESTIONS) == 12
+    for q in PLACEMENT_QUESTIONS:
+        assert q["id"]
+        assert q["level"] in ("A1", "A2", "B1")
+        assert "ru" in q["topic"] and "en" in q["topic"]
+        assert q["question"]
+        assert len(q["options"]) == 4
+        assert 0 <= q["correct_index"] < 4
+        assert "ru" in q["explanation"] and "en" in q["explanation"]
+
+def test_placement_evaluation_logic():
+    from services.placement_test import evaluate_placement_test, get_level_description
+    # 1. Все 12 верных -> B1
+    perfect_answers = [0] * 12
+    lvl, score, breakdown = evaluate_placement_test(perfect_answers)
+    assert lvl == "B1"
+    assert score == 12
+    assert breakdown["A1"] == (4, 4)
+    assert breakdown["A2"] == (4, 4)
+    assert breakdown["B1"] == (4, 4)
+
+    # 2. 6 верных -> A2
+    mid_answers = [0] * 6 + [1] * 6
+    lvl, score, _ = evaluate_placement_test(mid_answers)
+    assert lvl == "A2"
+    assert score == 6
+
+    # 3. 2 верных -> A1
+    low_answers = [0, 0] + [1] * 10
+    lvl, score, _ = evaluate_placement_test(low_answers)
+    assert lvl == "A1"
+    assert score == 2
+
+    # Описания
+    desc_ru = get_level_description("A2", lang="ru")
+    assert "A2" in desc_ru["name"]
+    assert desc_ru["title"]
+    assert desc_ru["tip"]
+
+    desc_en = get_level_description("B1", lang="en")
+    assert "B1" in desc_en["name"]
+    assert desc_en["title"]
+
+def test_locales_placement_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    import json
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    for k in ["btn_placement_test", "placement_welcome", "btn_start_placement", "btn_apply_placement_level", "btn_retake_placement", "placement_level_applied"]:
+        assert k in ru, f"Missing {k} in ru.json"
+        assert k in en, f"Missing {k} in en.json"
+
+

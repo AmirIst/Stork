@@ -78,6 +78,10 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN selected_level TEXT DEFAULT 'ALL'")
             if "selected_category" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN selected_category TEXT DEFAULT 'ALL'")
+            if "placement_level" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN placement_level TEXT")
+            if "placement_score" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN placement_score INTEGER")
 
         # Миграция: проверяем наличие столбца status в user_progress
         async with db.execute("PRAGMA table_info(user_progress)") as cursor:
@@ -280,7 +284,9 @@ async def get_user_stats(user_id: int) -> Dict[str, Any]:
             "total_words": total_words,
             "known_words": known_words,
             "review_words": review_words,
-            "learning_words": learning_words
+            "learning_words": learning_words,
+            "placement_level": user["placement_level"] if user and "placement_level" in user.keys() else None,
+            "placement_score": user["placement_score"] if user and "placement_score" in user.keys() else None
         }
 
 async def get_random_word(
@@ -444,3 +450,25 @@ async def has_chat_history(user_id: int) -> bool:
             (user_id,)
         ) as cursor:
             return (await cursor.fetchone()) is not None
+
+async def save_user_placement_result(user_id: int, level: str, score: int) -> None:
+    """Сохранить результат теста на уровень немецкого языка"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET placement_level = ?, placement_score = ? WHERE user_id = ?",
+            (level, score, user_id)
+        )
+        await db.commit()
+
+async def get_user_placement_result(user_id: int) -> Tuple[Optional[str], Optional[int]]:
+    """Получить результат теста на определение уровня"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT placement_level, placement_score FROM users WHERE user_id = ?",
+            (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0], row[1]
+    return None, None
+

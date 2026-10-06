@@ -10,7 +10,7 @@ from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database.db import init_db
-from handlers import common, articles, cards, quiz, exam, ai_chat, filters, voice
+from handlers import common, articles, cards, quiz, exam, placement, ai_chat, filters, voice
 
 # Настройка логирования
 logging.basicConfig(
@@ -49,6 +49,7 @@ async def main():
     dp.include_router(articles.router)
     dp.include_router(cards.router)
     dp.include_router(quiz.router)
+    dp.include_router(placement.router)
     dp.include_router(exam.router)
     dp.include_router(ai_chat.router)
     dp.include_router(filters.router)

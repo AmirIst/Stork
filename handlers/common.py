@@ -9,7 +9,8 @@ from locales.manager import i18n
 from keyboards.inline import (
     get_main_menu_keyboard,
     get_language_keyboard,
-    get_back_to_menu_keyboard
+    get_back_to_menu_keyboard,
+    get_stats_keyboard
 )
 from services.ui_helper import show_or_update_window
 
@@ -104,11 +105,26 @@ async def cb_menu_stats(callback: CallbackQuery):
         learning_words=stats.get("learning_words", 0),
         total_words=stats["total_words"]
     )
+
+    if stats.get("placement_level"):
+        lvl = stats["placement_level"]
+        score_val = stats.get("placement_score", 0)
+        if lang == "ru":
+            level_info = f"\n\n🎓 *Подтвержденный уровень CEFR:* *{lvl}* ({score_val}/12)"
+        else:
+            level_info = f"\n\n🎓 *Verified CEFR Level:* *{lvl}* ({score_val}/12)"
+    else:
+        if lang == "ru":
+            level_info = "\n\n🎓 *Уровень языка:* _еще не проверен (пройди тест ниже)_"
+        else:
+            level_info = "\n\n🎓 *Language Level:* _not tested yet (take test below)_"
+
+    full_stats_text = f"{text}{level_info}"
     
     await show_or_update_window(
         callback,
-        text,
-        reply_markup=get_back_to_menu_keyboard(lang),
+        full_stats_text,
+        reply_markup=get_stats_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()

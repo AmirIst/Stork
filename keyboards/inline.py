@@ -31,6 +31,7 @@ def get_main_menu_keyboard(lang: str = "ru", level: str = "ALL", category: str =
         [InlineKeyboardButton(text=i18n.get("btn_articles", lang), callback_data="menu_articles")],
         [InlineKeyboardButton(text=i18n.get("btn_cards", lang), callback_data="menu_cards")],
         [InlineKeyboardButton(text=i18n.get("btn_quiz", lang), callback_data="menu_quiz")],
+        [InlineKeyboardButton(text=i18n.get("btn_placement_test", lang), callback_data="menu_placement")],
         [InlineKeyboardButton(text=i18n.get("btn_exam_trainer", lang), callback_data="menu_exam")],
         [InlineKeyboardButton(text=i18n.get("btn_ai_tutor", lang), callback_data="menu_ai")],
         [InlineKeyboardButton(text=topics_btn_text, callback_data="open_filters")],
@@ -185,6 +186,15 @@ def get_back_to_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 
+def get_stats_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура экрана статистики с кнопкой прохождения теста на уровень"""
+    test_btn_text = "🎓 Пройти тест на уровень" if lang == "ru" else "🎓 Take Level Placement Test"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=test_btn_text, callback_data="menu_placement")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+
 def get_ai_dialog_welcome_keyboard(lang: str = "ru", has_history: bool = False) -> InlineKeyboardMarkup:
     """Клавиатура входа в режим ИИ-собеседника (с кнопками продолжения или очистки)"""
     buttons = []
@@ -229,5 +239,30 @@ def get_exam_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=i18n.get("btn_exam_next", lang), callback_data="menu_exam")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
+
+def get_placement_welcome_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура перед началом теста на уровень"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_start_placement", lang), callback_data="placement_start")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_placement_question_keyboard(q_index: int, options: List[str], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура с 4 вариантами ответа на вопрос теста на уровень"""
+    buttons = []
+    for opt_idx, opt_text in enumerate(options):
+        buttons.append([InlineKeyboardButton(text=opt_text, callback_data=f"pq:{q_index}:{opt_idx}")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")] )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_placement_result_keyboard(level: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура сертификата с кнопкой применения уровня"""
+    apply_text = i18n.get("btn_apply_placement_level", lang, level=level)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=apply_text, callback_data=f"set_lvl:{level}")],
+        [InlineKeyboardButton(text=i18n.get("btn_retake_placement", lang), callback_data="placement_start")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
 
 

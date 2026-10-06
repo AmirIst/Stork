@@ -56,6 +56,13 @@
   "btn_exam_new_task": "🔄 Change Task",
   "btn_exam_sample_voice": "🔊 Listen to Model Answer",
   "btn_exam_next": "✍️ Next Exam Task",
-  "exam_evaluating": "🪶 Stork examiner is carefully reviewing your submission..."
+  "exam_evaluating": "🪶 Stork examiner is carefully reviewing your submission...",
+
+  "btn_placement_test": "🎓 Level Placement Test (A1-B1)",
+  "placement_welcome": "🎓🪶 *German CEFR Placement Test*\n\nWant to assess your verified German level (*A1, A2, B1*)?\n\nThis test includes *12 quick questions*:\n• 🌱 4 questions for A1 (basic verbs, articles, prepositions)\n• 🌿 4 questions for A2 (Perfekt tense, cases, conjunctions)\n• 🌳 4 questions for B1 (Passiv, Konjunktiv II, complex clauses)\n\nAt the end, you will receive a detailed skill breakdown and can set your bot level in 1 tap!",
+  "btn_start_placement": "▶️ Start Placement Test (12 Qs)",
+  "btn_apply_placement_level": "🎯 Set bot level to {level}",
+  "btn_retake_placement": "🔄 Retake Test",
+  "placement_level_applied": "✅ Bot difficulty level successfully switched to *{level}*!"
 }
 
