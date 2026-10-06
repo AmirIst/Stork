@@ -170,3 +170,22 @@ def get_back_to_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
+
+def get_ai_dialog_welcome_keyboard(lang: str = "ru", has_history: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура входа в режим ИИ-собеседника (с кнопками продолжения или очистки)"""
+    buttons = []
+    if has_history:
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_ai_continue", lang), callback_data="ai_resume")])
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_ai_clear", lang), callback_data="ai_clear")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_ai_in_chat_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура под ответом ИИ: быстро очистить контекст или выйти в меню"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔄 Очистить чат" if lang == "ru" else "🔄 Clear chat", callback_data="ai_clear"),
+            InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
+        ]
+    ])
+

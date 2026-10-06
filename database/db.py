@@ -60,6 +60,17 @@ async def init_db():
         );
         """)
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS ai_chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_user ON ai_chat_history(user_id);")
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -395,3 +406,41 @@ async def record_user_answer(user_id: int, word_id: int, is_correct: bool):
                     last_reviewed = CURRENT_TIMESTAMP
             """, (user_id, word_id))
         await db.commit()
+
+async def add_chat_message(user_id: int, role: str, message: str):
+    """Сохранить реплику диалога в историю"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO ai_chat_history (user_id, role, message) VALUES (?, ?, ?)",
+            (user_id, role, message)
+        )
+        await db.commit()
+
+async def get_chat_history(user_id: int, limit: int = 6) -> List[Dict[str, str]]:
+    """Получить последние сообщения диалога в хронологическом порядке"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT role, message 
+            FROM ai_chat_history 
+            WHERE user_id = ? 
+            ORDER BY id DESC 
+            LIMIT ?
+        """, (user_id, limit)) as cursor:
+            rows = await cursor.fetchall()
+            return [{"role": r["role"], "message": r["message"]} for r in reversed(rows)]
+
+async def clear_chat_history(user_id: int):
+    """Очистить историю диалога пользователя"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM ai_chat_history WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+async def has_chat_history(user_id: int) -> bool:
+    """Проверить, есть ли сохраненная история диалога"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM ai_chat_history WHERE user_id = ? LIMIT 1",
+            (user_id,)
+        ) as cursor:
+            return (await cursor.fetchone()) is not None

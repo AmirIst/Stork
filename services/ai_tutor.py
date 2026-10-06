@@ -75,9 +75,27 @@ SCENARIO C: The user asks for a grammar rule, translation, or learning tip
 - Explain clearly and concisely with practical examples.
 """
 
-async def get_ai_tutor_reply(user_message: str, native_lang: str = "ru") -> str:
+# Пул постоянных HTTP-соединений для минимальной задержки (без повторных TLS-рукопожатий)
+_client: Optional[httpx.AsyncClient] = None
+
+def get_ai_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            timeout=15.0,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20, keepalive_expiry=60.0),
+            headers={"Content-Type": "application/json"}
+        )
+    return _client
+
+async def get_ai_tutor_reply(
+    user_message: str, 
+    native_lang: str = "ru",
+    history: Optional[list] = None
+) -> str:
     """
-    Отправить сообщение ученика ИИ-Аисту с расширенным мультиязычным пониманием и строгими рамками.
+    Отправить сообщение ученика ИИ-Аисту с контекстом предыдущих сообщений
+    и минимальной задержкой ответа через кэшированный пул соединений.
     """
     if not GEMINI_API_KEY:
         if native_lang == "ru":
@@ -99,38 +117,53 @@ async def get_ai_tutor_reply(user_message: str, native_lang: str = "ru") -> str:
 
     system_instruction = STORK_SYSTEM_PROMPT_RU if native_lang == "ru" else STORK_SYSTEM_PROMPT_EN
 
-    # Обращение к модели gemini-2.5-flash
+    # Формируем цепочку сообщений для сохранения контекста разговора
+    contents = []
+    if history:
+        for turn in history:
+            role = "model" if turn.get("role") in ("model", "assistant") else "user"
+            contents.append({
+                "role": role,
+                "parts": [{"text": turn.get("message", "")}]
+            })
+
+    # Добавляем свежее сообщение ученика
+    contents.append({
+        "role": "user",
+        "parts": [{"text": user_message}]
+    })
+
+    # Высокоскоростной запрос к gemini-2.5-flash
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": f"Instruction:\n{system_instruction}\n\nUser message:\n{user_message}"}]
-            }
-        ],
+        "system_instruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "contents": contents,
         "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 700
+            "temperature": 0.6,
+            "maxOutputTokens": 400
         }
     }
 
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
-            response = await client.post(url, json=payload)
-            if response.status_code == 200:
-                data = response.json()
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
-                clean_text = text.replace("—", "-").replace("–", "-")
-                return f"🪶 *Stork:*\n\n{clean_text}"
+        client = get_ai_client()
+        response = await client.post(url, json=payload)
+        if response.status_code == 200:
+            data = response.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            clean_text = text.replace("—", "-").replace("–", "-")
+            return f"🪶 *Stork:*\n\n{clean_text}"
+        else:
+            logger.error(f"Gemini API error: {response.status_code} - {response.text}")
+            if native_lang == "ru":
+                return "🪶 Упс, у Аиста закружилась голова при обращении к серверу. Попробуй еще раз через минуту!"
             else:
-                logger.error(f"Gemini API error: {response.status_code} - {response.text}")
-                if native_lang == "ru":
-                    return "🪶 Упс, у Аиста закружилась голова при обращении к серверу. Попробуй еще раз через минуту!"
-                else:
-                    return "🪶 Oops, Stork felt a bit dizzy connecting to the server. Please try again in a moment!"
+                return "🪶 Oops, Stork felt a bit dizzy connecting to the server. Please try again in a moment!"
     except Exception as e:
         logger.error(f"Exception during AI tutor request: {e}")
         if native_lang == "ru":
             return "🪶 Не удалось связаться с сервером ИИ. Проверь подключение к интернету или ключ."
         else:
             return "🪶 Failed to connect to AI server. Please check your internet connection or key."
+

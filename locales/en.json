@@ -40,6 +40,11 @@
   "stats_title": "📊 *Your Learning Progress*\n\n👤 Learner: *{name}*\n🌐 Target Language: *{lang_name}*\n⭐ Total Points: *{score}*\n🔥 Winning Streak: *{streak}*\n\n📚 *Your Vocabulary Progress:*\n🟢 Mastered (Know): *{known_words}*\n🟡 In Review: *{review_words}*\n🔴 Learning: *{learning_words}*\n📖 Total Words in Database: *{total_words}*",
   
   "ai_tutor_welcome": "🤖🪶 *Stork AI Conversation Mode*\n\nSend me a message in German (or ask a grammar question). I will:\n1. Gently correct any mistakes.\n2. Explain grammar clearly.\n3. Reply in German to keep our conversation going!\n\n_Send /menu to exit back to the main menu._",
+  "ai_tutor_resume_prompt": "🤖🪶 *Welcome back to our chat!*\n\nWe have an active conversation from before. Would you like to resume where you left off or start fresh? Type a message or choose below 👇",
   "ai_tutor_exit": "Exited AI mode. Back to main menu!",
-  "ai_thinking": "🪶 Stork is thinking..."
+  "ai_thinking": "🪶 Stork is thinking...",
+  "btn_ai_continue": "▶️ Continue Conversation",
+  "btn_ai_clear": "🔄 Clear & Start Fresh",
+  "ai_history_cleared": "🧹 *Conversation history cleared!*\n\nWe are now starting with a blank slate. Write anything in German or English!"
 }
+
