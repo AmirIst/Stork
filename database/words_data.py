@@ -5,11 +5,14 @@
 import json
 from pathlib import Path
 
-DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "words_500.json"
+DATA_FILE_1000 = Path(__file__).resolve().parent.parent / "data" / "words_1000.json"
+DATA_FILE_500 = Path(__file__).resolve().parent.parent / "data" / "words_500.json"
 
-if DATA_FILE.exists():
+target_file = DATA_FILE_1000 if DATA_FILE_1000.exists() else DATA_FILE_500
+
+if target_file.exists():
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+        with open(target_file, "r", encoding="utf-8") as f:
             INITIAL_WORDS = json.load(f)
     except Exception:
         INITIAL_WORDS = []

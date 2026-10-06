@@ -17,25 +17,25 @@ This document outlines the strategic product vision, feature backlog, monetizati
 
 ## 📋 Feature Breakdown & Development Phases
 
-### Phase 1: Core Experience & Conversational Memory (Current Priority)
-- [ ] **Multi-Turn AI Context Memory**:
+### Phase 1: Core Experience & Conversational Memory (Completed ✅)
+- [x] **Multi-Turn AI Context Memory**:
   - Implement rolling conversation buffer (last 8-10 turns) persisted in SQLite.
   - Enable Stork to remember learner preferences, ongoing topics, and recently corrected mistakes.
-  - Add `/reset` or inline button to start a fresh conversation topic.
-- [ ] **Vocabulary Expansion (1,000 Free Words)**:
-  - Scale database from 500 to 1,000 curated nouns with gender, plurals, IPA, and contextual sentences.
-  - Cover full A1-B1 core vocabulary across 12 daily life categories.
-  - Fully accessible to all users for free to maximize user acquisition.
+  - Add `/reset` and inline buttons to start a fresh conversation or resume.
+- [x] **Vocabulary Expansion (1,000 Free Words)**:
+  - Scaled database to exactly 1,000 curated nouns with gender, plurals, and contextual sentences.
+  - Covers full A1-B1 core vocabulary across 12 daily life categories.
+  - Fully accessible to all users for free as the core acquisition funnel.
 
-### Phase 2: Audio & Voice Mode (The "Killer" Feature)
-- [ ] **Text-to-Speech (Natural German Voice Output)**:
-  - Integrate neural German speech synthesis (`edge-tts` with native voices like Katja and Conrad).
-  - Voice message responses from Stork for conversational realism.
-  - Audio pronunciation preview button on flashcards and vocabulary lists.
-- [ ] **Speech-to-Text & Pronunciation Feedback**:
-  - Accept learner voice messages (`.ogg` Telegram voice notes).
-  - Transcribe and evaluate pronunciation with Gemini Multimodal audio API.
-  - Highlight mispronounced phonemes (e.g., "ch", umlauts "ä/ö/ü", "r").
+### Phase 2: Audio & Voice Mode (Completed ✅)
+- [x] **Text-to-Speech (Natural German Voice Output)**:
+  - Integrated neural German speech synthesis (`edge-tts` with studio voice `de-DE-KillianNeural`).
+  - Voice message responses and one-tap `[ 🔊 Listen ]` audio buttons on flashcards, article drills, quizzes, and AI replies.
+  - Zero-latency in-memory audio caching for frequent vocabulary.
+- [x] **Speech-to-Text & Pronunciation Feedback**:
+  - Accepts learner voice messages (`.ogg` Telegram voice notes).
+  - Transcribes and evaluates pronunciation and grammar with Gemini Multimodal audio processing.
+  - Returns structured feedback with spoken German voice reply.
 
 ### Phase 3: Exam Preparation Simulator (High-Monetization Module)
 - [ ] **Goethe / Telc "Schreiben" (Writing) Trainer**:

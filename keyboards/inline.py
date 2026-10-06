@@ -114,24 +114,29 @@ def get_article_keyboard(word_id: int, lang: str = "ru") -> InlineKeyboardMarkup
         ]
     ])
 
-def get_next_article_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """Кнопка перехода к следующему слову в тренажере артиклей"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_article")
-        ],
-        [
-            InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
-        ]
-    ])
+def get_next_article_keyboard(word_id: Optional[int] = None, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Кнопка перехода к следующему слову в тренажере артиклей с озвучкой"""
+    buttons = []
+    row = [InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_article")]
+    if word_id:
+        voice_text = "🔊 Озвучить" if lang == "ru" else "🔊 Listen"
+        row.append(InlineKeyboardButton(text=voice_text, callback_data=f"voice_word:{word_id}"))
+    buttons.append(row)
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_card_keyboard(word_id: int, lang: str = "ru", is_revealed: bool = False) -> InlineKeyboardMarkup:
-    """Клавиатура карточки слов в стиле Anki"""
+    """Клавиатура карточки слов в стиле Anki с озвучкой"""
     buttons = []
+    voice_text = "🔊 Озвучить" if lang == "ru" else "🔊 Listen"
     if not is_revealed:
-        buttons.append([InlineKeyboardButton(text=i18n.get("btn_reveal", lang), callback_data=f"card_rev:{word_id}")])
+        buttons.append([
+            InlineKeyboardButton(text=i18n.get("btn_reveal", lang), callback_data=f"card_rev:{word_id}"),
+            InlineKeyboardButton(text=voice_text, callback_data=f"voice_word:{word_id}")
+        ])
         buttons.append([InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_card")])
     else:
+        buttons.append([InlineKeyboardButton(text=voice_text, callback_data=f"voice_word:{word_id}")])
         buttons.append([
             InlineKeyboardButton(text=i18n.get("btn_rate_learning", lang), callback_data=f"rate:{word_id}:learning"),
             InlineKeyboardButton(text=i18n.get("btn_rate_review", lang), callback_data=f"rate:{word_id}:review"),
@@ -142,12 +147,16 @@ def get_card_keyboard(word_id: int, lang: str = "ru", is_revealed: bool = False)
     buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def get_card_rated_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+def get_card_rated_keyboard(word_id: Optional[int] = None, lang: str = "ru") -> InlineKeyboardMarkup:
     """Кнопки после сохранения оценки карточки"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_card")],
-        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
-    ])
+    buttons = []
+    row = [InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_card")]
+    if word_id:
+        voice_text = "🔊 Озвучить" if lang == "ru" else "🔊 Listen"
+        row.append(InlineKeyboardButton(text=voice_text, callback_data=f"voice_word:{word_id}"))
+    buttons.append(row)
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_quiz_keyboard(word_id: int, options: List[str], correct_answer: str, lang: str = "ru") -> InlineKeyboardMarkup:
     """Кнопки вариантов ответов для квиза на перевод"""
@@ -158,12 +167,16 @@ def get_quiz_keyboard(word_id: int, options: List[str], correct_answer: str, lan
     buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def get_next_quiz_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+def get_next_quiz_keyboard(word_id: Optional[int] = None, lang: str = "ru") -> InlineKeyboardMarkup:
     """Кнопка перехода к следующему вопросу квиза"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_quiz")],
-        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
-    ])
+    buttons = []
+    row = [InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="next_quiz")]
+    if word_id:
+        voice_text = "🔊 Озвучить" if lang == "ru" else "🔊 Listen"
+        row.append(InlineKeyboardButton(text=voice_text, callback_data=f"voice_word:{word_id}"))
+    buttons.append(row)
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_back_to_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Кнопка быстрого возврата в главное меню"""
@@ -181,8 +194,10 @@ def get_ai_dialog_welcome_keyboard(lang: str = "ru", has_history: bool = False) 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_ai_in_chat_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """Клавиатура под ответом ИИ: быстро очистить контекст или выйти в меню"""
+    """Клавиатура под ответом ИИ: озвучить немецкую часть, очистить контекст или выйти в меню"""
+    voice_text = "🔊 Озвучить по-немецки" if lang == "ru" else "🔊 Listen in German"
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=voice_text, callback_data="ai_voice_last")],
         [
             InlineKeyboardButton(text="🔄 Очистить чат" if lang == "ru" else "🔄 Clear chat", callback_data="ai_clear"),
             InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")

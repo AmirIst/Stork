@@ -1,12 +1,14 @@
+import io
 import logging
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from database import db
 from locales.manager import i18n
-from services.ai_tutor import get_ai_tutor_reply
+from services.ai_tutor import get_ai_tutor_reply, get_ai_tutor_voice_reply
+from services.tts import synthesize_speech, extract_german_for_voice
 from keyboards.inline import (
     get_back_to_menu_keyboard,
     get_ai_dialog_welcome_keyboard,
@@ -115,3 +117,60 @@ async def handle_ai_message(message: Message, state: FSMContext):
         reply_markup=get_ai_in_chat_keyboard(lang),
         parse_mode="Markdown"
     )
+
+@router.message(AIConversationState.in_conversation, F.voice)
+@router.message(F.voice)
+async def handle_ai_voice(message: Message, state: FSMContext):
+    """Обработка голосовых сообщений ученика с анализом речи и голосовым ответом"""
+    await state.set_state(AIConversationState.in_conversation)
+    user_id = message.from_user.id
+    lang = await db.get_user_lang(user_id)
+
+    # Информируем пользователя о прослушивании
+    await message.bot.send_chat_action(chat_id=message.chat.id, action="record_voice")
+
+    try:
+        # Скачиваем голосовой файл Telegram
+        file_info = await message.bot.get_file(message.voice.file_id)
+        voice_stream = io.BytesIO()
+        await message.bot.download_file(file_info.file_path, destination=voice_stream)
+        audio_bytes = voice_stream.getvalue()
+
+        # История диалога
+        history = await db.get_chat_history(user_id, limit=6)
+
+        # Обработка через Gemini с распознаванием и анализом
+        reply = await get_ai_tutor_voice_reply(audio_bytes, mime_type="audio/ogg", native_lang=lang, history=history)
+
+        # Сохранение в историю
+        clean_model_reply = reply.replace("🪶 *Stork:*\n\n", "").strip()
+        await db.add_chat_message(user_id, "user", "[🎙️ Голосовое сообщение]")
+        await db.add_chat_message(user_id, "model", clean_model_reply)
+
+        # Отправка подробного текстового разбора
+        await message.answer(
+            reply,
+            reply_markup=get_ai_in_chat_keyboard(lang),
+            parse_mode="Markdown"
+        )
+
+        # Ответное живое аудио от Stork на немецком языке
+        german_audio_text = extract_german_for_voice(reply)
+        if german_audio_text:
+            voice_out = await synthesize_speech(german_audio_text)
+            if voice_out:
+                voice_file = BufferedInputFile(voice_out, filename="stork_voice.mp3")
+                await message.answer_voice(
+                    voice=voice_file,
+                    caption="🪶 *Stork отвечает голосом:*",
+                    parse_mode="Markdown"
+                )
+    except Exception as e:
+        logger.error(f"Ошибка обработки голосового сообщения: {e}")
+        err_msg = (
+            "🪶 Не удалось обработать аудио. Попробуй еще раз или напиши текстом!"
+            if lang == "ru"
+            else "🪶 Could not process audio. Please try again or type a text message!"
+        )
+        await message.answer(err_msg)
+

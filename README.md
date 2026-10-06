@@ -29,29 +29,34 @@ Whether practicing essential noun genders (*der, die, das*), training vocabulary
 
 ## ✨ Key Features
 
-### 🤖 1. Contextual AI Tutor (Google Gemini 2.5 Flash)
-- **Interactive Conversation**: Real-time dialogue in German tailored to learner proficiency.
-- **Bilingual Assistance & Live Translation**: If a learner expresses thoughts in English or Russian, Stork automatically translates the phrase into natural German (`🇩🇪 Auf Deutsch:`), explains the grammatical pattern, and continues the conversation.
-- **Pedagogical Guardrails**: The model is restricted by strict system prompts to maintain educational focus and politely redirect off-topic inquiries.
+### 🎙️ 1. Neural Voice Mode & Speech Recognition (edge-tts + Gemini Multimodal)
+- **High-Definition Audio Pronunciation**: Studio-grade German pronunciation (`de-DE-KillianNeural`) for every word card, article drill, quiz, and AI conversation.
+- **Voice-to-Voice AI Practice**: Students can speak directly to Stork via Telegram voice messages. The AI transcribes the speech, assesses phonetics and grammar, and responds in text with spoken German audio.
+- **One-Tap Voice Buttons**: Tap `[ 🔊 Listen ]` under any card, quiz result, or AI reply to hear authentic German Hochdeutsch pronunciation.
 
-### 🧠 2. Spaced Repetition Flashcards (Anki-Style)
-- **Active Recall**: Hidden translations with toggle-to-reveal cards, complete with IPA pronunciation hints and contextual usage examples.
+### 🤖 2. Contextual AI Tutor with Dynamic Model Cascade
+- **Sub-1.5s Latency & Memory Persistence**: Multi-turn conversation history stored in SQLite with resume/clear dialog controls.
+- **Dynamic Failover Cascade**: Automatically routes requests across Google's fastest models (`gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.5-flash`) to ensure zero rate limit downtime.
+- **Universal 4-Block Tutoring Format**: Any input in English, Russian, or other languages receives: (1) Natural German translation, (2) Vocabulary insight, (3) German response with translation, and (4) Practice follow-up question.
+
+### 🧠 3. Spaced Repetition Flashcards (Anki-Style)
+- **Active Recall**: Hidden translations with toggle-to-reveal cards, complete with plural forms and contextual usage examples.
 - **Three-Tier Evaluation**: Rate retention with `[ 🔴 Don't Know ]`, `[ 🟡 Review ]`, or `[ 🟢 Know ]`.
 - **Progress Tracking**: Every interaction updates the user's mastery level in a persistent asynchronous SQLite database.
 
-### 📚 3. Curated 500-Word Vocabulary & Topic Filters
+### 📚 4. Curated 1,000-Word Vocabulary & Topic Filters
 - **12 Real-Life Categories**: Food, Home, City & Transport, People & Family, Work, Study, Clothing, Health, Travel, Nature, Time, and Leisure.
-- **CEFR Difficulty Levels**: Words tagged across `A1`, `A2`, and `B1`.
+- **CEFR Difficulty Levels**: Words tagged across `A1` (554 words), `A2` (399 words), and `B1` (47 words).
 - **Dynamic Filters**: Learners can select specific difficulty levels or topics directly from the main menu.
 
-### 🎯 4. German Gender Trainer (`der`, `die`, `das`)
+### 🎯 5. German Gender Trainer (`der`, `die`, `das`)
 - Interactive drills for mastering tricky German noun genders.
-- Immediate visual feedback, plural form displays, and streak counters (🔥) to encourage consistent practice.
+- Immediate visual feedback, audio pronunciation, and streak counters (🔥) to encourage daily practice.
 
-### 📝 5. Translation Quiz
-- Multiple-choice questions with 4 dynamically generated distractors for rapid vocabulary consolidation.
+### 📝 6. Translation Quiz
+- Multiple-choice questions with 4 dynamically generated distractors and audio playback for rapid vocabulary consolidation.
 
-### 🌐 6. Extensible Multi-Language Architecture (i18n)
+### 🌐 7. Extensible Multi-Language Architecture (i18n)
 - Clean, decoupled localization system powered by JSON dictionary catalogs (`locales/en.json`, `locales/ru.json`).
 - Adding a new UI language takes under two minutes without touching core business logic.
 

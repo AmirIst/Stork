@@ -87,7 +87,7 @@ async def init_db():
 
         await db.commit()
 
-        # Синхронизация 500 слов из INITIAL_WORDS
+        # Синхронизация слов из INITIAL_WORDS
         logger.info(f"Синхронизация {len(INITIAL_WORDS)} слов с базой данных...")
         for item in INITIAL_WORDS:
             async with db.execute("SELECT id FROM words WHERE word = ?", (item["word"],)) as cursor:
@@ -117,7 +117,7 @@ async def init_db():
                 """, (word_id, lang, tr_data["tr"], tr_data["example_tr"]))
 
         await db.commit()
-        logger.info("Словарь Stork (500 слов) успешно синхронизирован с базой данных.")
+        logger.info(f"Словарь Stork ({len(INITIAL_WORDS)} слов) успешно синхронизирован с базой данных.")
 
 async def get_or_create_user(user_id: int, username: Optional[str], first_name: Optional[str]) -> Dict[str, Any]:
     """Получить или зарегистрировать пользователя"""

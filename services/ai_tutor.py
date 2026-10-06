@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import base64
 import httpx
 from typing import Optional, List, Dict
 from config import GEMINI_API_KEY
@@ -201,3 +202,78 @@ async def get_ai_tutor_reply(
         return "🪶 У серверов Google сейчас временный пик нагрузки. Пожалуйста, напиши еще разок через несколько секунд!"
     else:
         return "🪶 Google servers are experiencing a temporary spike in traffic. Please try again in a few seconds!"
+
+async def get_ai_tutor_voice_reply(
+    audio_bytes: bytes,
+    mime_type: str = "audio/ogg",
+    native_lang: str = "ru",
+    history: Optional[list] = None
+) -> str:
+    """
+    Обработка входящего голосового сообщения от ученика.
+    Gemini слушает аудио, транскрибирует, комментирует речь и отвечает по правилам Stork.
+    """
+    if not GEMINI_API_KEY:
+        if native_lang == "ru":
+            return "🪶 Голосовой режим требует подключения `GEMINI_API_KEY` в файле `.env`."
+        else:
+            return "🪶 Voice mode requires `GEMINI_API_KEY` configured in `.env`."
+
+    system_instruction = STORK_SYSTEM_PROMPT_RU if native_lang == "ru" else STORK_SYSTEM_PROMPT_EN
+    b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+
+    contents = []
+    if history:
+        for turn in history:
+            role = "model" if turn.get("role") in ("model", "assistant") else "user"
+            contents.append({
+                "role": role,
+                "parts": [{"text": turn.get("message", "")}]
+            })
+
+    audio_prompt_text = (
+        "Послушай это аудиосообщение ученика. Обязательно начни ответ с точной расшифровки сказанного: "
+        "🎙️ *Ты сказал:* «...» (если говорил по-немецки, то: 🎙️ *Du hast gesagt:* «...»). "
+        "Далее разбери ошибки или похвали за речь, переведи и ответь по 4-блочному стандарту наставника Stork."
+        if native_lang == "ru"
+        else "Listen to this audio from the student. Always start with an exact transcription: "
+        "🎙️ *You said:* \"...\" (or if in German: 🎙️ *Du hast gesagt:* \"...\"). "
+        "Then evaluate mistakes or praise pronunciation, translate, and reply following Stork's 4-block format."
+    )
+
+    contents.append({
+        "role": "user",
+        "parts": [
+            {
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": b64_audio
+                }
+            },
+            {
+                "text": audio_prompt_text
+            }
+        ]
+    })
+
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.6,
+            "maxOutputTokens": 800
+        }
+    }
+
+    raw_text = await execute_gemini_request(payload)
+    if raw_text:
+        clean_text = raw_text.replace("—", "-").replace("–", "-")
+        return f"🪶 *Stork:*\n\n{clean_text}"
+
+    if native_lang == "ru":
+        return "🪶 У серверов Google сейчас временный пик нагрузки. Пожалуйста, отправь голосовое еще разок через несколько секунд!"
+    else:
+        return "🪶 Google servers are experiencing high traffic. Please send your voice note again in a few moments!"
+

@@ -130,7 +130,7 @@ async def cb_rate_card(callback: CallbackQuery):
 
     await callback.message.edit_text(
         text,
-        reply_markup=get_card_rated_keyboard(lang),
+        reply_markup=get_card_rated_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"
     )
     await callback.answer()

@@ -87,7 +87,7 @@ async def cb_check_article(callback: CallbackQuery):
 
     await callback.message.edit_text(
         full_response,
-        reply_markup=get_next_article_keyboard(lang),
+        reply_markup=get_next_article_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"
     )
     await callback.answer()
