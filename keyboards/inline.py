@@ -37,6 +37,9 @@ def get_main_menu_keyboard(lang: str = "ru", level: str = "ALL", category: str =
         [InlineKeyboardButton(text=topics_btn_text, callback_data="open_filters")],
         [
             InlineKeyboardButton(text=i18n.get("btn_stats", lang), callback_data="menu_stats"),
+            InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium")
+        ],
+        [
             InlineKeyboardButton(text=i18n.get("btn_settings", lang), callback_data="menu_lang")
         ]
     ])
@@ -186,13 +189,47 @@ def get_back_to_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 
-def get_stats_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """Клавиатура экрана статистики с кнопкой прохождения теста на уровень"""
+def get_stats_keyboard(lang: str = "ru", notifications_enabled: bool = True) -> InlineKeyboardMarkup:
+    """Клавиатура экрана статистики с кнопками управления профилем и напоминаниями"""
     test_btn_text = "🎓 Пройти тест на уровень" if lang == "ru" else "🎓 Take Level Placement Test"
+    notif_btn_text = i18n.get("btn_toggle_reminders_on" if notifications_enabled else "btn_toggle_reminders_off", lang)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=test_btn_text, callback_data="menu_placement")],
+        [
+            InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium"),
+            InlineKeyboardButton(text=notif_btn_text, callback_data="toggle_notif")
+        ],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
+
+def get_premium_keyboard(lang: str = "ru", is_active: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура оформления и управления тарифом Stork Premium"""
+    buttons = []
+    if not is_active:
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_trial", lang), callback_data="premium_trial")])
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_buy_stars", lang), callback_data="premium_buy_stars")])
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_promo", lang), callback_data="premium_promo")])
+    else:
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_buy_stars", lang), callback_data="premium_buy_stars")])
+        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_promo", lang), callback_data="premium_promo")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_quota_exceeded_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура при исчерпании дневного бесплатного лимита запросов"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium")],
+        [InlineKeyboardButton(text=i18n.get("btn_premium_trial", lang), callback_data="premium_trial")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_reminder_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура для уведомления-напоминания о серии занятий"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_quick_train", lang), callback_data="menu_cards")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
 
 
 def get_ai_dialog_welcome_keyboard(lang: str = "ru", has_history: bool = False) -> InlineKeyboardMarkup:

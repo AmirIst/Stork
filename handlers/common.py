@@ -119,12 +119,51 @@ async def cb_menu_stats(callback: CallbackQuery):
         else:
             level_info = "\n\n🎓 *Language Level:* _not tested yet (take test below)_"
 
-    full_stats_text = f"{text}{level_info}"
+    # Блок тарифа и дневных квот
+    is_prem = stats.get("is_premium", False)
+    ai_count = stats.get("daily_ai_count", 0)
+    ai_limit = stats.get("daily_ai_limit", 10)
+    exam_count = stats.get("daily_exam_count", 0)
+    exam_limit = stats.get("daily_exam_limit", 3)
+    notif_enabled = stats.get("notifications_enabled", True)
+
+    if lang == "ru":
+        tariff_title = f"⭐️ *Тариф:* Stork Premium 👑 (до {stats['premium_until'][:10]})" if is_prem else "⭐️ *Тариф:* Бесплатный"
+        ai_quota_str = "Безлимитно ⭐️" if is_prem else f"{ai_count}/{ai_limit}"
+        exam_quota_str = "Безлимитно ⭐️" if is_prem else f"{exam_count}/{exam_limit}"
+        quota_info = (
+            f"\n\n{tariff_title}\n"
+            f"🤖 *ИИ-собеседник сегодня:* {ai_quota_str}\n"
+            f"✍️ *Проверка писем сегодня:* {exam_quota_str}\n"
+            f"🔔 *Напоминания о серии:* {'Включены' if notif_enabled else 'Выключены'}"
+        )
+    else:
+        tariff_title = f"⭐️ *Plan:* Stork Premium 👑 (until {stats['premium_until'][:10]})" if is_prem else "⭐️ *Plan:* Free"
+        ai_quota_str = "Unlimited ⭐️" if is_prem else f"{ai_count}/{ai_limit}"
+        exam_quota_str = "Unlimited ⭐️" if is_prem else f"{exam_count}/{exam_limit}"
+        quota_info = (
+            f"\n\n{tariff_title}\n"
+            f"🤖 *AI chat today:* {ai_quota_str}\n"
+            f"✍️ *Exam checks today:* {exam_quota_str}\n"
+            f"🔔 *Streak reminders:* {'Enabled' if notif_enabled else 'Disabled'}"
+        )
+
+    full_stats_text = f"{text}{level_info}{quota_info}"
     
     await show_or_update_window(
         callback,
         full_stats_text,
-        reply_markup=get_stats_keyboard(lang),
+        reply_markup=get_stats_keyboard(lang, notifications_enabled=notif_enabled),
         parse_mode="Markdown"
     )
     await callback.answer()
+
+@router.callback_query(F.data == "toggle_notif")
+async def cb_toggle_notif(callback: CallbackQuery):
+    """Переключение ежедневных напоминаний о серии занятий"""
+    new_status = await db.toggle_user_notifications(callback.from_user.id)
+    lang = await db.get_user_lang(callback.from_user.id)
+    notice = i18n.get("reminder_toggled_on" if new_status else "reminder_toggled_off", lang)
+    await callback.answer(notice)
+    await cb_menu_stats(callback)
+

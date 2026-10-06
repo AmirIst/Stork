@@ -14,7 +14,8 @@ from keyboards.inline import (
     get_exam_levels_keyboard,
     get_exam_task_keyboard,
     get_exam_result_keyboard,
-    get_back_to_menu_keyboard
+    get_back_to_menu_keyboard,
+    get_quota_exceeded_keyboard
 )
 from services.ui_helper import show_or_update_window, mark_voice_sent
 
@@ -114,6 +115,18 @@ async def handle_exam_text_submission(message: Message, state: FSMContext):
 
     user_id = message.from_user.id
     lang = await db.get_user_lang(user_id)
+
+    # Проверяем дневной лимит проверки экзаменов
+    allowed, count, limit = await db.check_exam_quota(user_id)
+    if not allowed:
+        text = i18n.get("exam_quota_exceeded", lang, count=count, limit=limit)
+        await message.answer(
+            text,
+            reply_markup=get_quota_exceeded_keyboard(lang),
+            parse_mode="Markdown"
+        )
+        return
+
     data = await state.get_data()
     task_id = data.get("task_id")
     task = get_exam_task(task_id=task_id, level=data.get("level"))
@@ -128,6 +141,10 @@ async def handle_exam_text_submission(message: Message, state: FSMContext):
     review = await evaluate_student_letter(task, message.text, native_lang=lang)
     await state.update_data(last_review=review)
 
+    # Учитываем проверку и обновляем серию занятий
+    await db.increment_exam_quota(user_id)
+    await db.update_daily_streak(user_id)
+
     await eval_status.edit_text(
         review,
         reply_markup=get_exam_result_keyboard(lang),
@@ -139,6 +156,18 @@ async def handle_exam_voice_submission(message: Message, state: FSMContext):
     """Обработка экзаменационного ответа, надиктованного голосом"""
     user_id = message.from_user.id
     lang = await db.get_user_lang(user_id)
+
+    # Проверяем дневной лимит проверки экзаменов
+    allowed, count, limit = await db.check_exam_quota(user_id)
+    if not allowed:
+        text = i18n.get("exam_quota_exceeded", lang, count=count, limit=limit)
+        await message.answer(
+            text,
+            reply_markup=get_quota_exceeded_keyboard(lang),
+            parse_mode="Markdown"
+        )
+        return
+
     data = await state.get_data()
     task_id = data.get("task_id")
     task = get_exam_task(task_id=task_id, level=data.get("level"))
@@ -171,6 +200,10 @@ async def handle_exam_voice_submission(message: Message, state: FSMContext):
 
         review = await evaluate_student_letter(task, transcribed_text, native_lang=lang)
         await state.update_data(last_review=review)
+
+        # Учитываем проверку и обновляем серию занятий
+        await db.increment_exam_quota(user_id)
+        await db.update_daily_streak(user_id)
 
         await eval_status.edit_text(
             review,

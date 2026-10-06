@@ -63,6 +63,25 @@
   "btn_start_placement": "▶️ Start Placement Test (12 Qs)",
   "btn_apply_placement_level": "🎯 Set bot level to {level}",
   "btn_retake_placement": "🔄 Retake Test",
-  "placement_level_applied": "✅ Bot difficulty level successfully switched to *{level}*!"
+  "placement_level_applied": "✅ Bot difficulty level successfully switched to *{level}*!",
+
+  "btn_premium": "⭐️ Stork Premium",
+  "btn_premium_trial": "🎁 Try 7 Days Free",
+  "btn_premium_buy_stars": "⭐️ 1 Month - 150 Stars",
+  "btn_premium_promo": "🏷️ Enter Promo Code",
+  "btn_toggle_reminders_on": "🔔 Reminders: ON",
+  "btn_toggle_reminders_off": "🔕 Reminders: OFF",
+  "premium_info": "⭐️ *Stork Premium: Unlimited German*\n\nSupercharge your German learning without limits:\n• ♾️ *Unlimited AI Conversations* (no 10 messages/day limit)\n• ✍️ *Unlimited Exam Writing Evaluations* (Goethe & Telc A1-B1 with detailed scoring)\n• ⚡ *Priority response speed & instant voice playback*\n• 👑 *Golden VIP Learner badge in your profile*\n\nChoose an option below 👇",
+  "premium_trial_activated": "🎉 *Congratulations! 7 days of Stork Premium activated!*\n\nEnjoy unlimited AI conversation and exam writing reviews until *{until_date}*.\n\nHappy learning! 🇩🇪🪶",
+  "premium_already_active": "⭐️ You already have active *Stork Premium* until *{until_date}*! Enjoy all unlimited features.",
+  "promo_prompt": "🏷️ Send your promo code in reply (e.g. *STORKVIP*):",
+  "promo_success": "🎉 *Promo code activated successfully!*\n\nYou received 30 days of *Stork Premium* until *{until_date}*! 🚀",
+  "promo_invalid": "❌ Invalid promo code. Please check spelling and try again.",
+  "ai_quota_exceeded": "🛑 *Daily free message limit reached ({count}/{limit})*\n\nFree requests refresh tomorrow at 00:00.\nWant to continue without limits? Get *Stork Premium ⭐️* or start a 7-day free trial!",
+  "exam_quota_exceeded": "🛑 *Daily exam review limit reached ({count}/{limit})*\n\nFree checks refresh tomorrow at 00:00.\nWith *Stork Premium ⭐️*, exam essay reviews are completely unlimited!",
+  "reminder_text": "🪶 *Stork reminder:* Your streak is in danger! 🔥\n\nYou haven't practiced today yet. Review a few cards or practice articles to protect your streak (*{streak} days*)! 🇩🇪",
+  "btn_quick_train": "🃏 Quick Practice",
+  "reminder_toggled_on": "🔔 Daily streak reminders turned ON!",
+  "reminder_toggled_off": "🔕 Daily reminders turned OFF."
 }
 

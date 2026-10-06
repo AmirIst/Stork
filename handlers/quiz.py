@@ -75,6 +75,8 @@ async def cb_answer_quiz(callback: CallbackQuery):
         await db.record_user_answer(callback.from_user.id, word_id, False)
         header = i18n.get("quiz_wrong", lang, correct_tr=word_data["translation"])
 
+    await db.update_daily_streak(callback.from_user.id)
+
     card = (
         f"📖 *{word_data['article']} {word_data['word']}*: {word_data['translation']}\n"
         f"💡 _{word_data['example_de']}_\n"

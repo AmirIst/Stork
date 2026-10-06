@@ -12,7 +12,8 @@ from services.tts import synthesize_speech, extract_german_for_voice
 from keyboards.inline import (
     get_back_to_menu_keyboard,
     get_ai_dialog_welcome_keyboard,
-    get_ai_in_chat_keyboard
+    get_ai_in_chat_keyboard,
+    get_quota_exceeded_keyboard
 )
 from services.ui_helper import show_or_update_window
 
@@ -102,6 +103,17 @@ async def handle_ai_message(message: Message, state: FSMContext):
     user_id = message.from_user.id
     lang = await db.get_user_lang(user_id)
 
+    # Проверяем дневной лимит бесплатных запросов
+    allowed, count, limit = await db.check_ai_quota(user_id)
+    if not allowed:
+        text = i18n.get("ai_quota_exceeded", lang, count=count, limit=limit)
+        await message.answer(
+            text,
+            reply_markup=get_quota_exceeded_keyboard(lang),
+            parse_mode="Markdown"
+        )
+        return
+
     # Мгновенно отправляем индикатор набора текста для идеального отклика
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
@@ -110,6 +122,10 @@ async def handle_ai_message(message: Message, state: FSMContext):
 
     # Выполняем высокоскоростной запрос через пул соединений
     reply = await get_ai_tutor_reply(message.text, native_lang=lang, history=history)
+
+    # Учитываем использование квоты и обновляем серию занятий
+    await db.increment_ai_quota(user_id)
+    await db.update_daily_streak(user_id)
 
     # Сохраняем ход беседы в базу данных
     await db.add_chat_message(user_id, "user", message.text)
@@ -130,6 +146,17 @@ async def handle_ai_voice(message: Message, state: FSMContext):
     user_id = message.from_user.id
     lang = await db.get_user_lang(user_id)
 
+    # Проверяем дневной лимит бесплатных запросов
+    allowed, count, limit = await db.check_ai_quota(user_id)
+    if not allowed:
+        text = i18n.get("ai_quota_exceeded", lang, count=count, limit=limit)
+        await message.answer(
+            text,
+            reply_markup=get_quota_exceeded_keyboard(lang),
+            parse_mode="Markdown"
+        )
+        return
+
     # Информируем пользователя о прослушивании
     await message.bot.send_chat_action(chat_id=message.chat.id, action="record_voice")
 
@@ -145,6 +172,10 @@ async def handle_ai_voice(message: Message, state: FSMContext):
 
         # Обработка через Gemini с распознаванием и анализом
         reply = await get_ai_tutor_voice_reply(audio_bytes, mime_type="audio/ogg", native_lang=lang, history=history)
+
+        # Учитываем использование квоты и обновляем серию занятий
+        await db.increment_ai_quota(user_id)
+        await db.update_daily_streak(user_id)
 
         # Сохранение в историю
         clean_model_reply = reply.replace("🪶 *Stork:*\n\n", "").strip()

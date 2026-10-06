@@ -1,11 +1,15 @@
 import random
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 import aiosqlite
 from config import DB_PATH, DEFAULT_LANGUAGE
 from database.words_data import INITIAL_WORDS, CATEGORY_METADATA
 
 logger = logging.getLogger(__name__)
+
+FREE_DAILY_AI_LIMIT = 10
+FREE_DAILY_EXAM_LIMIT = 3
 
 async def init_db():
     """Инициализация базы данных SQLite, миграции и синхронизация словаря"""
@@ -20,7 +24,17 @@ async def init_db():
             selected_category TEXT DEFAULT 'ALL',
             score INTEGER DEFAULT 0,
             streak INTEGER DEFAULT 0,
-            last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            placement_level TEXT,
+            placement_score INTEGER,
+            is_premium INTEGER DEFAULT 0,
+            premium_until TIMESTAMP,
+            daily_ai_count INTEGER DEFAULT 0,
+            daily_exam_count INTEGER DEFAULT 0,
+            last_usage_date TEXT DEFAULT '',
+            notifications_enabled INTEGER DEFAULT 1,
+            last_streak_date TEXT DEFAULT '',
+            last_reminder_date TEXT DEFAULT ''
         );
         """)
 
@@ -82,6 +96,22 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN placement_level TEXT")
             if "placement_score" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN placement_score INTEGER")
+            if "is_premium" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0")
+            if "premium_until" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN premium_until TIMESTAMP")
+            if "daily_ai_count" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN daily_ai_count INTEGER DEFAULT 0")
+            if "daily_exam_count" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN daily_exam_count INTEGER DEFAULT 0")
+            if "last_usage_date" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN last_usage_date TEXT DEFAULT ''")
+            if "notifications_enabled" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN notifications_enabled INTEGER DEFAULT 1")
+            if "last_streak_date" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN last_streak_date TEXT DEFAULT ''")
+            if "last_reminder_date" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN last_reminder_date TEXT DEFAULT ''")
 
         # Миграция: проверяем наличие столбца status в user_progress
         async with db.execute("PRAGMA table_info(user_progress)") as cursor:
@@ -247,11 +277,15 @@ async def get_word_user_status(user_id: int, word_id: int) -> Optional[str]:
             return row[0] if row else None
 
 async def get_user_stats(user_id: int) -> Dict[str, Any]:
-    """Получить расширенную статистику пользователя"""
+    """Получить расширенную статистику пользователя с учетом квот и Premium"""
+    today_str = _get_current_date_str()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
+
+        if user:
+            user = await _ensure_daily_reset(db, user, today_str)
 
         async with db.execute("SELECT COUNT(*) FROM words") as cursor:
             total_words = (await cursor.fetchone())[0]
@@ -274,6 +308,8 @@ async def get_user_stats(user_id: int) -> Dict[str, Any]:
         ) as cursor:
             learning_words = (await cursor.fetchone())[0]
 
+        is_prem, prem_until = await is_user_premium(user_id) if user else (False, None)
+
         return {
             "score": user["score"] if user else 0,
             "streak": user["streak"] if user else 0,
@@ -286,7 +322,14 @@ async def get_user_stats(user_id: int) -> Dict[str, Any]:
             "review_words": review_words,
             "learning_words": learning_words,
             "placement_level": user["placement_level"] if user and "placement_level" in user.keys() else None,
-            "placement_score": user["placement_score"] if user and "placement_score" in user.keys() else None
+            "placement_score": user["placement_score"] if user and "placement_score" in user.keys() else None,
+            "is_premium": is_prem,
+            "premium_until": prem_until,
+            "daily_ai_count": user["daily_ai_count"] if user else 0,
+            "daily_ai_limit": -1 if is_prem else FREE_DAILY_AI_LIMIT,
+            "daily_exam_count": user["daily_exam_count"] if user else 0,
+            "daily_exam_limit": -1 if is_prem else FREE_DAILY_EXAM_LIMIT,
+            "notifications_enabled": bool(user["notifications_enabled"]) if user and user["notifications_enabled"] is not None else True
         }
 
 async def get_random_word(
@@ -471,4 +514,197 @@ async def get_user_placement_result(user_id: int) -> Tuple[Optional[str], Option
             if row:
                 return row[0], row[1]
     return None, None
+
+def _get_current_date_str() -> str:
+    """Получить текущую дату в формате YYYY-MM-DD (UTC)"""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+async def _ensure_daily_reset(db: aiosqlite.Connection, user_row: Any, today_str: str) -> Any:
+    """Сбрасывает дневные счетчики, если наступил новый календарный день"""
+    user_dict = dict(user_row) if user_row else {}
+    last_date = user_dict.get("last_usage_date") or ""
+    user_id = user_dict.get("user_id")
+    if last_date != today_str and user_id:
+        await db.execute(
+            "UPDATE users SET daily_ai_count = 0, daily_exam_count = 0, last_usage_date = ? WHERE user_id = ?",
+            (today_str, user_id)
+        )
+        await db.commit()
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            return await cursor.fetchone()
+    return user_row
+
+async def update_daily_streak(user_id: int) -> int:
+    """Обновить серию ежедневных занятий (Duolingo Daily Streak)"""
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    yesterday_str = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT streak, last_streak_date FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return 0
+
+            current_streak = row["streak"] or 0
+            last_streak_date = row["last_streak_date"] or ""
+
+            if last_streak_date == today_str:
+                return current_streak
+            elif last_streak_date == yesterday_str:
+                new_streak = current_streak + 1
+            else:
+                new_streak = 1
+
+            await db.execute(
+                "UPDATE users SET streak = ?, last_streak_date = ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
+                (new_streak, today_str, user_id)
+            )
+            await db.commit()
+            return new_streak
+
+async def is_user_premium(user_id: int) -> Tuple[bool, Optional[str]]:
+    """Проверить статус Stork Premium и дату окончания"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT is_premium, premium_until FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row or not row["is_premium"]:
+                return False, None
+
+            premium_until = row["premium_until"]
+            if premium_until:
+                now_str = datetime.now(timezone.utc).isoformat()
+                if premium_until < now_str:
+                    await db.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
+                    await db.commit()
+                    return False, None
+            return True, premium_until
+
+async def activate_premium(user_id: int, days: int = 30) -> str:
+    """Активировать Stork Premium на указанное количество дней"""
+    until_dt = datetime.now(timezone.utc) + timedelta(days=days)
+    until_str = until_dt.isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET is_premium = 1, premium_until = ? WHERE user_id = ?",
+            (until_str, user_id)
+        )
+        await db.commit()
+    return until_str
+
+async def check_ai_quota(user_id: int) -> Tuple[bool, int, int]:
+    """
+    Проверить доступность ИИ-собеседника.
+    Возвращает (разрешено, использовано_сегодня, лимит).
+    Для Premium лимит равен -1 (безлимит).
+    """
+    today_str = _get_current_date_str()
+    is_premium, _ = await is_user_premium(user_id)
+    if is_premium:
+        return True, 0, -1
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return True, 0, FREE_DAILY_AI_LIMIT
+            row = await _ensure_daily_reset(db, row, today_str)
+            used = row["daily_ai_count"] or 0
+            allowed = used < FREE_DAILY_AI_LIMIT
+            return allowed, used, FREE_DAILY_AI_LIMIT
+
+async def increment_ai_quota(user_id: int):
+    """Увеличить счетчик использованных сообщений ИИ"""
+    today_str = _get_current_date_str()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                await _ensure_daily_reset(db, row, today_str)
+                await db.execute(
+                    "UPDATE users SET daily_ai_count = daily_ai_count + 1 WHERE user_id = ?",
+                    (user_id,)
+                )
+                await db.commit()
+
+async def check_exam_quota(user_id: int) -> Tuple[bool, int, int]:
+    """
+    Проверить доступность проверки экзаменационных писем.
+    Возвращает (разрешено, использовано_сегодня, лимит).
+    Для Premium лимит равен -1 (безлимит).
+    """
+    today_str = _get_current_date_str()
+    is_premium, _ = await is_user_premium(user_id)
+    if is_premium:
+        return True, 0, -1
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return True, 0, FREE_DAILY_EXAM_LIMIT
+            row = await _ensure_daily_reset(db, row, today_str)
+            used = row["daily_exam_count"] or 0
+            allowed = used < FREE_DAILY_EXAM_LIMIT
+            return allowed, used, FREE_DAILY_EXAM_LIMIT
+
+async def increment_exam_quota(user_id: int):
+    """Увеличить счетчик проверенных экзаменационных работ"""
+    today_str = _get_current_date_str()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                await _ensure_daily_reset(db, row, today_str)
+                await db.execute(
+                    "UPDATE users SET daily_exam_count = daily_exam_count + 1 WHERE user_id = ?",
+                    (user_id,)
+                )
+                await db.commit()
+
+async def toggle_user_notifications(user_id: int) -> bool:
+    """Переключить статус ежедневных напоминаний (Вкл/Выкл)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT notifications_enabled FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            current = row[0] if (row and row[0] is not None) else 1
+            new_val = 0 if current == 1 else 1
+            await db.execute("UPDATE users SET notifications_enabled = ? WHERE user_id = ?", (new_val, user_id))
+            await db.commit()
+            return bool(new_val)
+
+async def get_user_notifications_status(user_id: int) -> bool:
+    """Получить статус напоминаний"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT notifications_enabled FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0] is not None:
+                return bool(row[0])
+            return True
+
+async def get_users_for_daily_reminder(today_date: str) -> List[Dict[str, Any]]:
+    """Получить список пользователей, которым нужно отправить напоминание о сохранении серии"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT user_id, first_name, native_lang, streak, last_streak_date 
+            FROM users 
+            WHERE notifications_enabled = 1 
+              AND (last_streak_date IS NULL OR last_streak_date != ?) 
+              AND (last_reminder_date IS NULL OR last_reminder_date != ?)
+        """, (today_date, today_date)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+async def mark_user_reminded(user_id: int, today_date: str):
+    """Отметить отправку напоминания за сегодня"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET last_reminder_date = ? WHERE user_id = ?", (today_date, user_id))
+        await db.commit()
+
 

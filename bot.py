@@ -10,7 +10,8 @@ from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database.db import init_db
-from handlers import common, articles, cards, quiz, exam, placement, ai_chat, filters, voice
+from handlers import common, articles, cards, quiz, exam, placement, ai_chat, filters, voice, premium
+from services.reminder_service import run_daily_reminder_worker
 
 # Настройка логирования
 logging.basicConfig(
@@ -54,8 +55,12 @@ async def main():
     dp.include_router(ai_chat.router)
     dp.include_router(filters.router)
     dp.include_router(voice.router)
+    dp.include_router(premium.router)
 
     await setup_bot_commands(bot)
+
+    # Запуск фонового планировщика ежедневных напоминаний
+    reminder_task = asyncio.create_task(run_daily_reminder_worker(bot))
 
     logger.info("Бот Stork (Аист) успешно запущен и готов к работе!")
     
@@ -64,6 +69,7 @@ async def main():
     try:
         await dp.start_polling(bot)
     finally:
+        reminder_task.cancel()
         await bot.session.close()
 
 if __name__ == "__main__":

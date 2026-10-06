@@ -237,4 +237,82 @@ def test_locales_placement_keys():
         assert k in ru, f"Missing {k} in ru.json"
         assert k in en, f"Missing {k} in en.json"
 
+def test_locales_premium_and_reminder_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    keys = [
+        "btn_premium", "btn_premium_trial", "btn_premium_buy_stars", "btn_premium_promo",
+        "btn_toggle_reminders_on", "btn_toggle_reminders_off", "premium_info",
+        "premium_trial_activated", "premium_already_active", "promo_prompt",
+        "promo_success", "promo_invalid", "ai_quota_exceeded", "exam_quota_exceeded",
+        "reminder_text", "btn_quick_train", "reminder_toggled_on", "reminder_toggled_off"
+    ]
+    for k in keys:
+        assert k in ru, f"Missing {k} in ru.json"
+        assert k in en, f"Missing {k} in en.json"
+
+@pytest.mark.anyio
+async def test_quota_and_premium_logic():
+    from database import db
+    await db.init_db()
+
+    test_uid = 888777666
+    # 1. Новый пользователь
+    await db.get_or_create_user(test_uid, "test_user", "Tester")
+
+    # Проверка бесплатной квоты ИИ (10)
+    allowed, used, limit = await db.check_ai_quota(test_uid)
+    assert allowed is True
+    assert limit == 10
+
+    # Проверка бесплатной квоты экзамена (3)
+    allowed, used, limit = await db.check_exam_quota(test_uid)
+    assert allowed is True
+    assert limit == 3
+
+    # Исчерпание квоты ИИ
+    for _ in range(10):
+        await db.increment_ai_quota(test_uid)
+    allowed, used, limit = await db.check_ai_quota(test_uid)
+    assert allowed is False
+    assert used >= 10
+
+    # Активация Premium снимает все лимиты
+    exp_date = await db.activate_premium(test_uid, days=7)
+    assert exp_date is not None
+    is_prem, until = await db.is_user_premium(test_uid)
+    assert is_prem is True
+
+    # Теперь ИИ-квота безлимитна (limit == -1)
+    allowed_prem, _, limit_prem = await db.check_ai_quota(test_uid)
+    assert allowed_prem is True
+    assert limit_prem == -1
+
+@pytest.mark.anyio
+async def test_daily_streak_and_notification_toggle():
+    from database import db
+    await db.init_db()
+
+    test_uid = 555444333
+    await db.get_or_create_user(test_uid, "streak_tester", "StreakUser")
+
+    # Обновление серии занятий
+    streak = await db.update_daily_streak(test_uid)
+    assert streak >= 1
+
+    # Повторное занятие в тот же день не увеличивает стрик дважды
+    streak2 = await db.update_daily_streak(test_uid)
+    assert streak2 == streak
+
+    # Переключение уведомлений
+    status1 = await db.toggle_user_notifications(test_uid)
+    status2 = await db.toggle_user_notifications(test_uid)
+    assert status1 != status2
+
+
 
