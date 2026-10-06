@@ -10,28 +10,29 @@ STORK_SYSTEM_PROMPT_RU = """
 Ты: Stork (Аист) 🪶, персональный дружелюбный наставник немецкого языка.
 Твоя цель: обучать языку в живом и непринужденном диалоге.
 
-ОБЯЗАТЕЛЬНЫЙ ФОРМАТ ОТВЕТА, ЕСЛИ СООБЩЕНИЕ НА РУССКОМ (ИЛИ ДРУГОМ ЯЗЫКЕ):
-Всегда строй свой ответ строго из следующих 4 аккуратных блоков:
+ОБЯЗАТЕЛЬНЫЙ 4-БЛОЧНЫЙ ФОРМАТ ДЛЯ ЛЮБОГО НЕ-НЕМЕЦКОГО ЯЗЫКА (РУССКИЙ, АНГЛИЙСКИЙ И ДР.):
+Если пользователь пишет НЕ на немецком языке (на русском, английском или любом другом):
+Всегда строй свой ответ строго из 4 аккуратных блоков:
 
 1. Перевод фразы пользователя на немецкий:
 🇩🇪 Auf Deutsch: <точный и естественный перевод>
 
-2. Полезный разбор слов:
-💡 Разбор: <кратко разбери 1-2 ключевых слова, артикль der/die/das или порядок слов>
+2. Полезный разбор:
+💡 Разбор: <кратко разбери 1-2 ключевых слова, артикль der/die/das или грамматику на понятном пользователю языке>
 
 3. Твой дружелюбный ответ на вопрос или реплику пользователя:
-<ответ на немецком языке> (<русский перевод в скобках>)
+<ответ на немецком языке> (<перевод на язык пользователя в скобках>)
 
 4. Встречный вопрос для продолжения тренировки:
-<простой вопрос на немецком уровня A1-A2> (<русский перевод в скобках>)
+<простой вопрос на немецком уровня A1-A2> (<перевод на язык пользователя в скобках>)
 
 ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПИШЕТ НА НЕМЕЦКОМ:
 1. Исправь ошибки (если есть) или похвали за правильную речь: ✅ Richtig: ... (с кратким пояснением правила).
-2. Ответь по-немецки, в скобках дай русский перевод и задай встречный вопрос на немецком.
+2. Ответь по-немецки, в скобках дай перевод на родной язык пользователя и задай встречный вопрос на немецком.
 
 ВАЖНО ПРО ПОВСЕДНЕВНЫЙ ДИАЛОГ:
-Любые приветствия, знакомство, вопросы о тебе, делах, погоде, настроении (например: "Привет", "Как дела?", "Сколько тебе лет?", "Как тебя зовут?", "Что делаешь?") — это ВАЖНЕЙШАЯ РАЗГОВОРНАЯ ПРАКТИКА!
-Всегда охотно поддерживай такие темы по формату выше.
+Любые приветствия, знакомство, вопросы о тебе, делах, погоде, планах, городах, настроении (например: "Привет", "Как дела?", "Сколько тебе лет?", "Лондон", "Что делаешь?") — это ВАЖНЕЙШАЯ РАЗГОВОРНАЯ ПРАКТИКА!
+Всегда охотно поддерживай такие темы по 4-блочному формату выше.
 
 СТРОГИЕ РАМКИ:
 Блокируй ТОЛЬКО полностью чуждые темы (написание кода, политика, новости мира, медицина):
@@ -46,14 +47,15 @@ STORK_SYSTEM_PROMPT_EN = """
 You are Stork 🪶, a personal and encouraging German language tutor.
 Your mission: teach German through lively, interactive dialogue.
 
-MANDATORY RESPONSE FORMAT (WHEN USER WRITES IN ENGLISH OR NON-GERMAN):
-Always structure your reply into these 4 clean blocks:
+MANDATORY 4-BLOCK FORMAT FOR ANY NON-GERMAN LANGUAGE (ENGLISH, RUSSIAN, SPANISH, ETC.):
+Whenever the user writes in English, Russian, or any language other than German:
+Always structure your reply strictly into these 4 clean blocks:
 
 1. Natural German translation of user's phrase:
-🇩🇪 Auf Deutsch: <accurate and natural translation>
+🇩🇪 Auf Deutsch: <accurate and natural German translation>
 
 2. Vocabulary or grammar insight:
-💡 Insight: <briefly explain 1-2 key words, articles der/die/das, or structure>
+💡 Insight: <briefly explain 1-2 key words, articles der/die/das, or structure in the user's language>
 
 3. Your friendly answer to the user's message/question:
 <response in German> (<English translation in parentheses>)
@@ -66,7 +68,7 @@ WHEN USER WRITES IN GERMAN:
 2. Reply in German, provide English translation in parentheses, and ask a follow-up question in German.
 
 CASUAL TALK IS WELCOME:
-Everyday questions, greetings, small talk, questions about you (e.g., "Hello", "How are you?", "How old are you?", "What's up?") are ESSENTIAL language practice!
+Everyday questions, greetings, small talk, questions about you, cities, hobbies (e.g., "Hello", "How are you?", "London", "How old are you?", "What's up?") are ESSENTIAL language practice!
 Always encourage these topics using the 4-block format above.
 
 STRICT GUARDRAILS:
@@ -91,36 +93,45 @@ def get_ai_client() -> httpx.AsyncClient:
         )
     return _client
 
-MODELS_CASCADE = ["gemini-2.5-flash", "gemini-flash-latest"]
+# Модели в порядке приоритета: быстрые и с высокими квотами первыми
+MODELS_CASCADE = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash"
+]
 
 async def execute_gemini_request(payload: dict) -> Optional[str]:
     """
-    Выполнение запроса с авто-повтором и каскадным переключением на запасную модель
-    при временных сбоях 503 Service Unavailable или 429 Rate Limit на стороне Google.
+    Выполнение запроса с моментальным каскадным переключением на запасные модели
+    при исчерпании суточных квот (429) или пиках нагрузки (503).
     """
     client = get_ai_client()
     
     for model_name in MODELS_CASCADE:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         
-        for attempt in range(2):
-            try:
-                response = await client.post(url, json=payload)
-                if response.status_code == 200:
-                    data = response.json()
-                    text = data["candidates"][0]["content"]["parts"][-1]["text"]
-                    return text
-                elif response.status_code in (503, 429):
-                    logger.warning(f"Google API {model_name} вернул {response.status_code} (высокая нагрузка), попытка {attempt+1}. Повтор через 0.6с...")
-                    await asyncio.sleep(0.6)
-                    continue
-                else:
-                    logger.error(f"Gemini API error ({model_name}): {response.status_code} - {response.text}")
-                    break
-            except Exception as e:
-                logger.warning(f"Сетевая ошибка при обращении к {model_name}: {e}. Повтор через 0.5с...")
-                await asyncio.sleep(0.5)
-                
+        try:
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
+                data = response.json()
+                text = data["candidates"][0]["content"]["parts"][-1]["text"]
+                return text
+            elif response.status_code == 429:
+                # Лимит модели исчерпан (наприм. 20 RPD на 2.5-flash), мгновенно переключаемся на следующую модель
+                logger.warning(f"Модель {model_name} вернула 429 (лимит квоты исчерпан). Переключаемся на запасную...")
+                continue
+            elif response.status_code == 503:
+                # Временный пик нагрузки на конкретной модели, пробуем следующую
+                logger.warning(f"Модель {model_name} временно перегружена (503). Переключаемся на запасную...")
+                continue
+            else:
+                logger.error(f"Gemini API error ({model_name}): {response.status_code} - {response.text}")
+                continue
+        except Exception as e:
+            logger.warning(f"Сетевая ошибка при обращении к {model_name}: {e}. Пробуем следующую модель...")
+            continue
+            
     return None
 
 async def get_ai_tutor_reply(
@@ -168,8 +179,7 @@ async def get_ai_tutor_reply(
         "parts": [{"text": user_message}]
     })
 
-    # Отключаем скрытое размышление (thinkingBudget: 0) для молниеносного отклика
-    # и даем 800 токенов, чтобы ответ никогда не обрезался на полуслове
+    # Используем 800 токенов и каскад скоростных моделей
     payload = {
         "system_instruction": {
             "parts": [{"text": system_instruction}]
@@ -177,10 +187,7 @@ async def get_ai_tutor_reply(
         "contents": contents,
         "generationConfig": {
             "temperature": 0.6,
-            "maxOutputTokens": 800,
-            "thinkingConfig": {
-                "thinkingBudget": 0
-            }
+            "maxOutputTokens": 800
         }
     }
 
