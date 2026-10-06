@@ -65,9 +65,10 @@ async def cb_voice_ai_reply(callback: CallbackQuery):
         return
 
     voice_file = BufferedInputFile(audio_bytes, filename="stork_voice.mp3")
+    caption = "🪶 *Все немецкие фразы из ответа:*" if lang == "ru" else "🪶 *All German phrases from reply:*"
     await callback.message.answer_voice(
         voice=voice_file,
-        caption="🪶 *Stork говорит по-немецки:*",
+        caption=caption,
         parse_mode="Markdown"
     )
     await callback.answer()

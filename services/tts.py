@@ -68,53 +68,80 @@ async def synthesize_word_audio(article: str, word: str, example_de: Optional[st
 
 def extract_german_for_voice(ai_response: str) -> str:
     """
-    Извлекает немецкий текст из 4-блочного ответа ИИ Stork для озвучки.
-    Убирает русский перевод в скобках, разбор и служебные значки.
+    Извлекает все немецкие фразы из ответа ИИ Stork (перевод, ответ, встречный вопрос).
+    Убирает перевод в скобках, разбор и служебные значки.
+    Поддерживает как русский, так и английский форматы.
     """
     lines = [line.strip() for line in ai_response.split("\n") if line.strip()]
     german_parts = []
 
     for line in lines:
-        # Извлекаем строку "Auf Deutsch: ..."
-        if "Auf Deutsch:" in line:
-            clean = line.split("Auf Deutsch:")[-1].strip()
-            # Убираем перевод в скобках если есть
-            clean = re.sub(r"\(.*?\)", "", clean).strip()
-            if clean:
-                german_parts.append(clean)
-            continue
-
-        # Пропускаем разбор на русском ("💡 Разбор:")
-        if line.startswith("💡") or line.startswith("Разбор:"):
-            continue
-
-        # Пропускаем чисто русские реплики Stork в начале
-        if line.startswith("🪶 Stork:") or line.startswith("Ой,"):
-            continue
-
-        # Проверяем строки, содержащие немецкий текст с переводом в скобках
-        # Например: "Ich bin ein Sprachmodell... (Я языковая модель...)"
-        # Берем только часть до скобок
-        if "(" in line and ")" in line:
-            # Извлекаем все фразы до круглых скобок
-            clean_line = re.sub(r"^[🪶✅*_\-•]+\s*", "", line).strip()
-            parts_before_paren = re.findall(r"([^()]+)(?:\(.*?\))?", clean_line)
-            filtered = [p.strip() for p in parts_before_paren if p.strip()]
-            for p in filtered:
-                # Если в строке латинские буквы (немецкий)
-                if re.search(r"[a-zA-ZäöüÄÖÜß]", p) and not re.search(r"[а-яА-ЯёЁ]", p):
-                    german_parts.append(p)
-        else:
-            # Если вся строка на латинице (немецкий) без кириллицы
-            if re.search(r"[a-zA-ZäöüÄÖÜß]", line) and not re.search(r"[а-яА-ЯёЁ]", line):
-                clean = re.sub(r"^[🪶✅*_\-•]+\s*", "", line).strip()
+        # 1. Линии с переводом на немецкий
+        for marker in ["Перевод фразы на немецком:", "Перевод фразы на немецкий:", "German translation:", "Auf Deutsch:"]:
+            if marker in line:
+                part = line.split(marker)[-1].strip()
+                clean = re.sub(r"\(.*?\)", "", part).strip()
+                clean = re.sub(r"^[*\s]+|[*\s]+$", "", clean)
                 if clean:
                     german_parts.append(clean)
+                break
+        else:
+            # 2. Пропускаем разбор и приветственные реплики
+            if any(marker in line for marker in ["Полезный разбор:", "Useful breakdown:", "💡 Разбор:", "💡 Insight:"]):
+                continue
+
+            if line.startswith("🪶 Stork:") or line.startswith("🎙️"):
+                continue
+
+            # 3. Ответ на сообщение, встречный вопрос или проверка
+            for marker in ["Ответ на сообщение:", "Reply to your message:", "Встречный вопрос:", "Follow-up question:", "Richtig:"]:
+                if marker in line:
+                    part = line.split(marker)[-1].strip()
+                    clean = re.sub(r"\(.*?\)", "", part).strip()
+                    clean = re.sub(r"^[*\s]+|[*\s]+$", "", clean)
+                    if re.search(r"[a-zA-ZäöüÄÖÜß]", clean) and not re.search(r"[а-яА-ЯёЁ]", clean):
+                        german_parts.append(clean)
+                    break
+            else:
+                # 4. Общие строки с немецким текстом и переводом в скобках
+                clean_line = re.sub(r"^[🪶✅💬❓*_\-•]+\s*", "", line).strip()
+                if "(" in clean_line and ")" in clean_line:
+                    parts_before_paren = re.findall(r"([^()]+)(?:\(.*?\))?", clean_line)
+                    for p in parts_before_paren:
+                        p_clean = p.strip()
+                        if re.search(r"[a-zA-ZäöüÄÖÜß]", p_clean) and not re.search(r"[а-яА-ЯёЁ]", p_clean):
+                            german_parts.append(p_clean)
+                elif re.search(r"[a-zA-ZäöüÄÖÜß]", clean_line) and not re.search(r"[а-яА-ЯёЁ]", clean_line):
+                    german_parts.append(clean_line)
 
     if german_parts:
         return " ".join(german_parts)
 
-    # Fallback: если специфичные блоки не найдены, берем текст без кириллицы
     no_cyrillic = re.sub(r"[а-яА-ЯёЁ]", "", ai_response)
     clean_fallback = re.sub(r"[\(\)💡🪶*_\n]+", " ", no_cyrillic).strip()
     return clean_fallback if len(clean_fallback) > 3 else "Guten Tag! Ich lerne Deutsch mit Stork."
+
+def extract_musterloesung_for_voice(review_text: str) -> str:
+    """
+    Извлекает немецкий текст из образцового решения (Musterlösung) экзаменационного разбора.
+    Удаляет перевод в скобках и оставляет только чистую немецкую речь.
+    """
+    marker = None
+    for m in ["Идеальный образец ответа (Musterlösung):", "Model Answer (Musterlösung):", "Musterlösung:"]:
+        if m in review_text:
+            marker = m
+            break
+
+    if not marker:
+        return extract_german_for_voice(review_text)
+
+    sample_part = review_text.split(marker)[1]
+    for next_marker in ["💡 Экзаменационный совет", "💡 Stork Exam Tip", "💡"]:
+        if next_marker in sample_part:
+            sample_part = sample_part.split(next_marker)[0]
+            break
+
+    clean_de = re.sub(r"\(.*?\)", "", sample_part)
+    clean_de = re.sub(r"[*_#>`~]+", " ", clean_de).strip()
+    return clean_de if clean_de else extract_german_for_voice(review_text)
+

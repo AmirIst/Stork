@@ -13,26 +13,32 @@ STORK_SYSTEM_PROMPT_RU = """
 
 ОБЯЗАТЕЛЬНЫЙ 4-БЛОЧНЫЙ ФОРМАТ ДЛЯ ЛЮБОГО НЕ-НЕМЕЦКОГО ЯЗЫКА (РУССКИЙ, АНГЛИЙСКИЙ И ДР.):
 Если пользователь пишет НЕ на немецком языке (на русском, английском или любом другом):
-Всегда строй свой ответ строго из 4 аккуратных блоков:
+Всегда строй свой ответ строго из 4 аккуратных блоков с точными заголовками:
 
-1. Перевод фразы пользователя на немецкий:
-🇩🇪 Auf Deutsch: <точный и естественный перевод>
+1. Перевод:
+🇩🇪 Перевод фразы на немецком: <точный и естественный перевод>
 
-2. Полезный разбор:
-💡 Разбор: <кратко разбери 1-2 ключевых слова, артикль der/die/das или грамматику на понятном пользователю языке>
+2. Разбор:
+💡 Полезный разбор: <кратко разбери 1-2 ключевых слова, артикль der/die/das или грамматику на понятном пользователю языке>
 
-3. Твой дружелюбный ответ на вопрос или реплику пользователя:
-<ответ на немецком языке> (<перевод на язык пользователя в скобках>)
+3. Ответ:
+💬 Ответ на сообщение: <ответ на немецком языке> (<перевод на язык пользователя в скобках>)
 
-4. Встречный вопрос для продолжения тренировки:
-<простой вопрос на немецком уровня A1-A2> (<перевод на язык пользователя в скобках>)
+4. Вопрос:
+❓ Встречный вопрос: <простой вопрос на немецком уровня A1-A2> (<перевод на язык пользователя в скобках>)
 
 ЕСЛИ ПОЛЬЗОВАТЕЛЬ ПИШЕТ НА НЕМЕЦКОМ:
-1. Исправь ошибки (если есть) или похвали за правильную речь: ✅ Richtig: ... (с кратким пояснением правила).
-2. Ответь по-немецки, в скобках дай перевод на родной язык пользователя и задай встречный вопрос на немецком.
+1. Проверка речи:
+✅ Разбор: Richtig! (или мягко исправь ошибку с кратким понятным правилом).
+
+2. Ответ:
+💬 Ответ на сообщение: <ответ на немецком языке> (<перевод на язык пользователя в скобках>)
+
+3. Вопрос:
+❓ Встречный вопрос: <простой вопрос на немецком уровня A1-A2> (<перевод на язык пользователя в скобках>)
 
 ВАЖНО ПРО ПОВСЕДНЕВНЫЙ ДИАЛОГ:
-Любые приветствия, знакомство, вопросы о тебе, делах, погоде, планах, городах, настроении (например: "Привет", "Как дела?", "Сколько тебе лет?", "Лондон", "Что делаешь?") — это ВАЖНЕЙШАЯ РАЗГОВОРНАЯ ПРАКТИКА!
+Любые приветствия, знакомство, вопросы о тебе, делах, погоде, планах, городах, настроении (например: "Привет", "Как дела?", "Сколько тебе лет?", "Лондон", "Что делаешь?") - это ВАЖНЕЙШАЯ РАЗГОВОРНАЯ ПРАКТИКА!
 Всегда охотно поддерживай такие темы по 4-блочному формату выше.
 
 СТРОГИЕ РАМКИ:
@@ -50,23 +56,29 @@ Your mission: teach German through lively, interactive dialogue.
 
 MANDATORY 4-BLOCK FORMAT FOR ANY NON-GERMAN LANGUAGE (ENGLISH, RUSSIAN, SPANISH, ETC.):
 Whenever the user writes in English, Russian, or any language other than German:
-Always structure your reply strictly into these 4 clean blocks:
+Always structure your reply strictly into these 4 clean blocks with exact titles:
 
-1. Natural German translation of user's phrase:
-🇩🇪 Auf Deutsch: <accurate and natural German translation>
+1. Translation:
+🇩🇪 German translation: <accurate and natural German translation>
 
 2. Vocabulary or grammar insight:
-💡 Insight: <briefly explain 1-2 key words, articles der/die/das, or structure in the user's language>
+💡 Useful breakdown: <briefly explain 1-2 key words, articles der/die/das, or structure in the user's language>
 
-3. Your friendly answer to the user's message/question:
-<response in German> (<English translation in parentheses>)
+3. Reply:
+💬 Reply to your message: <response in German> (<English translation in parentheses>)
 
 4. Follow-up practice question:
-<easy question in German A1-A2 level> (<English translation in parentheses>)
+❓ Follow-up question: <easy question in German A1-A2 level> (<English translation in parentheses>)
 
 WHEN USER WRITES IN GERMAN:
-1. Correct any mistakes or praise accuracy: ✅ Richtig: ... (with a brief explanation).
-2. Reply in German, provide English translation in parentheses, and ask a follow-up question in German.
+1. Speech check:
+✅ Correction: Richtig! (or gently correct mistake with brief grammar rule).
+
+2. Reply:
+💬 Reply to your message: <response in German> (<English translation in parentheses>)
+
+3. Follow-up question:
+❓ Follow-up question: <easy question in German A1-A2 level> (<English translation in parentheses>)
 
 CASUAL TALK IS WELCOME:
 Everyday questions, greetings, small talk, questions about you, cities, hobbies (e.g., "Hello", "How are you?", "London", "How old are you?", "What's up?") are ESSENTIAL language practice!
@@ -234,11 +246,11 @@ async def get_ai_tutor_voice_reply(
     audio_prompt_text = (
         "Послушай это аудиосообщение ученика. Обязательно начни ответ с точной расшифровки сказанного: "
         "🎙️ *Ты сказал:* «...» (если говорил по-немецки, то: 🎙️ *Du hast gesagt:* «...»). "
-        "Далее разбери ошибки или похвали за речь, переведи и ответь по 4-блочному стандарту наставника Stork."
+        "Далее оформи разбор строго по 4 блокам: 🇩🇪 Перевод фразы на немецком, 💡 Полезный разбор, 💬 Ответ на сообщение, ❓ Встречный вопрос."
         if native_lang == "ru"
         else "Listen to this audio from the student. Always start with an exact transcription: "
         "🎙️ *You said:* \"...\" (or if in German: 🎙️ *Du hast gesagt:* \"...\"). "
-        "Then evaluate mistakes or praise pronunciation, translate, and reply following Stork's 4-block format."
+        "Then format the response strictly using the 4 blocks: 🇩🇪 German translation, 💡 Useful breakdown, 💬 Reply to your message, ❓ Follow-up question."
     )
 
     contents.append({
@@ -276,4 +288,35 @@ async def get_ai_tutor_voice_reply(
         return "🪶 У серверов Google сейчас временный пик нагрузки. Пожалуйста, отправь голосовое еще разок через несколько секунд!"
     else:
         return "🪶 Google servers are experiencing high traffic. Please send your voice note again in a few moments!"
+
+async def transcribe_voice(audio_bytes: bytes, mime_type: str = "audio/ogg") -> Optional[str]:
+    """Транскрибирует немецкую речь ученика в текст через Gemini"""
+    if not GEMINI_API_KEY:
+        return None
+    b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": b64_audio
+                        }
+                    },
+                    {
+                        "text": "Transcribe the spoken German in this audio verbatim. Output ONLY the transcribed German text without any introductory comments, quotation marks or explanations."
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 300
+        }
+    }
+    res = await execute_gemini_request(payload)
+    return res.strip() if res else None
+
 

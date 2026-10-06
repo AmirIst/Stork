@@ -31,6 +31,7 @@ def get_main_menu_keyboard(lang: str = "ru", level: str = "ALL", category: str =
         [InlineKeyboardButton(text=i18n.get("btn_articles", lang), callback_data="menu_articles")],
         [InlineKeyboardButton(text=i18n.get("btn_cards", lang), callback_data="menu_cards")],
         [InlineKeyboardButton(text=i18n.get("btn_quiz", lang), callback_data="menu_quiz")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_trainer", lang), callback_data="menu_exam")],
         [InlineKeyboardButton(text=i18n.get("btn_ai_tutor", lang), callback_data="menu_ai")],
         [InlineKeyboardButton(text=topics_btn_text, callback_data="open_filters")],
         [
@@ -203,4 +204,30 @@ def get_ai_in_chat_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
         ]
     ])
+
+def get_exam_levels_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура выбора уровня для экзаменационного тренажера"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_a1", lang), callback_data="exam_lvl:A1")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_a2", lang), callback_data="exam_lvl:A2")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_b1", lang), callback_data="exam_lvl:B1")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_random", lang), callback_data="exam_lvl:RANDOM")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_exam_task_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура при активном экзаменационном задании"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_new_task", lang), callback_data="exam_new_task")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_exam_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после проверки экзаменационной работы"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_sample_voice", lang), callback_data="exam_voice_sample")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_next", lang), callback_data="menu_exam")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
 

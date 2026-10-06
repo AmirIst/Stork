@@ -52,6 +52,81 @@ Und wie geht es dir heute? (А как у тебя сегодня дела?)
     assert "Разбор" not in german
     assert "языковая модель" not in german
 
+def test_extract_german_for_voice_new_format():
+    ru_reply = """
+🪶 Stork:
+
+🇩🇪 Перевод фразы на немецком: Wie viel Uhr ist es?
+💡 Полезный разбор: Слово Uhr означает часы или время.
+💬 Ответ на сообщение: Es ist jetzt genau fünfzehn Uhr. (Сейчас ровно 15:00.)
+❓ Встречный вопрос: Wann hast du Feierabend? (Когда у тебя заканчивается рабочий день?)
+"""
+    ru_extracted = extract_german_for_voice(ru_reply)
+    assert "Wie viel Uhr ist es?" in ru_extracted
+    assert "Es ist jetzt genau fünfzehn Uhr." in ru_extracted
+    assert "Wann hast du Feierabend?" in ru_extracted
+    assert "Полезный разбор" not in ru_extracted
+    assert "Сейчас ровно" not in ru_extracted
+
+    en_reply = """
+🪶 Stork:
+
+🇩🇪 German translation: Wie viel Uhr ist es?
+💡 Useful breakdown: The word Uhr means clock or time.
+💬 Reply to your message: Es ist jetzt genau fünfzehn Uhr. (It is 3 pm right now.)
+❓ Follow-up question: Wann hast du Feierabend? (When do you finish work?)
+"""
+    en_extracted = extract_german_for_voice(en_reply)
+    assert "Wie viel Uhr ist es?" in en_extracted
+    assert "Es ist jetzt genau fünfzehn Uhr." in en_extracted
+    assert "Wann hast du Feierabend?" in en_extracted
+    assert "Useful breakdown" not in en_extracted
+    assert "finish work" not in en_extracted
+
+def test_extract_musterloesung_for_voice():
+    from services.tts import extract_musterloesung_for_voice
+    sample_review = """
+🪶 *Экзаменационная оценка Stork (A1):*
+
+📊 Оценка экзаменатора: 90/100 • Bestanden
+📏 Объем текста: 32 слова
+
+🌟 Идеальный образец ответа (Musterlösung):
+Lieber Markus, ich lade dich herzlich zu meiner Geburtstagsparty ein. Die Party beginnt am Samstag um 18 Uhr. Ich koche Pasta, aber bring bitte Getränke mit. (Дорогой Маркус, сердечно приглашаю тебя...)
+
+💡 Экзаменационный совет от Stork:
+Не забывай про вежливые обращения в начале и в конце письма.
+"""
+    sample_de = extract_musterloesung_for_voice(sample_review)
+    assert "Lieber Markus, ich lade dich herzlich" in sample_de
+    assert "Die Party beginnt am Samstag" in sample_de
+    assert "Дорогой Маркус" not in sample_de
+    assert "Экзаменационный совет" not in sample_de
+
+def test_exam_tasks_structure():
+    from services.exam_service import EXAM_TASKS
+    assert len(EXAM_TASKS) >= 6
+    for t in EXAM_TASKS:
+        assert t["id"]
+        assert t["level"] in ("A1", "A2", "B1")
+        assert "ru" in t["title"] and "en" in t["title"]
+        assert "ru" in t["situation"] and "en" in t["situation"]
+        assert len(t["points"]["ru"]) >= 3
+        assert len(t["points"]["en"]) >= 3
+        assert "ru" in t["starter_hint"] and "en" in t["starter_hint"]
+
+def test_locales_exam_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    for key in ["btn_exam_trainer", "exam_welcome", "btn_exam_lvl_a1", "btn_exam_lvl_a2", "btn_exam_lvl_b1", "btn_exam_lvl_random", "btn_exam_new_task", "btn_exam_sample_voice", "btn_exam_next", "exam_evaluating"]:
+        assert key in ru, f"Missing key {key} in ru.json"
+        assert key in en, f"Missing key {key} in en.json"
+
 @pytest.mark.anyio
 async def test_db_random_word_fetch():
     from database import db

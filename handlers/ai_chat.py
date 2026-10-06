@@ -147,24 +147,12 @@ async def handle_ai_voice(message: Message, state: FSMContext):
         await db.add_chat_message(user_id, "user", "[🎙️ Голосовое сообщение]")
         await db.add_chat_message(user_id, "model", clean_model_reply)
 
-        # Отправка подробного текстового разбора
+        # Отправка подробного текстового разбора с кнопкой озвучки
         await message.answer(
             reply,
             reply_markup=get_ai_in_chat_keyboard(lang),
             parse_mode="Markdown"
         )
-
-        # Ответное живое аудио от Stork на немецком языке
-        german_audio_text = extract_german_for_voice(reply)
-        if german_audio_text:
-            voice_out = await synthesize_speech(german_audio_text)
-            if voice_out:
-                voice_file = BufferedInputFile(voice_out, filename="stork_voice.mp3")
-                await message.answer_voice(
-                    voice=voice_file,
-                    caption="🪶 *Stork отвечает голосом:*",
-                    parse_mode="Markdown"
-                )
     except Exception as e:
         logger.error(f"Ошибка обработки голосового сообщения: {e}")
         err_msg = (

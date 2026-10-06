@@ -45,6 +45,17 @@
   "ai_thinking": "🪶 Stork is thinking...",
   "btn_ai_continue": "▶️ Continue Conversation",
   "btn_ai_clear": "🔄 Clear & Start Fresh",
-  "ai_history_cleared": "🧹 *Conversation history cleared!*\n\nWe are now starting with a blank slate. Write anything in German or English!"
+  "ai_history_cleared": "🧹 *Conversation history cleared!*\n\nWe are now starting with a blank slate. Write anything in German or English!",
+  
+  "btn_exam_trainer": "✍️ Exam Writing Trainer (Schreiben)",
+  "exam_welcome": "✍️🪶 *Goethe & Telc Exam Writing Simulator*\n\nPractice official writing tasks (emails, letters, forum posts) for levels *A1, A2, and B1*.\n\nStork will evaluate:\n• 📊 Exam criteria scoring (out of 100)\n• 📏 Word count and completeness of Leitpunkte\n• 🔍 Grammar, cases, and word order\n• 🌟 Provide a certified model answer (*Musterlösung*)\n\nSelect your target level:",
+  "btn_exam_lvl_a1": "🟢 Goethe / Telc A1 (30-40 words)",
+  "btn_exam_lvl_a2": "🟡 Goethe / Telc A2 (40-50 words)",
+  "btn_exam_lvl_b1": "🔴 Goethe / Telc B1 (80-100 words)",
+  "btn_exam_lvl_random": "🎲 Random Exam Task",
+  "btn_exam_new_task": "🔄 Change Task",
+  "btn_exam_sample_voice": "🔊 Listen to Model Answer",
+  "btn_exam_next": "✍️ Next Exam Task",
+  "exam_evaluating": "🪶 Stork examiner is carefully reviewing your submission..."
 }
 
