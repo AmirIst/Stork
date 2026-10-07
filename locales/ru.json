@@ -111,6 +111,14 @@
   "achievements_title": "🏆 *Твои достижения и трофеи ({unlocked} из {total})*\n\nЗанимайся регулярно, чтобы открыть всю коллекцию пернатых наград!",
   "achievements_unlocked_header": "🌟 *Открытые награды:*",
   "achievements_locked_header": "🔒 *Следующие цели:*",
-  "achievement_unlocked_toast": "🎉 *Новое достижение разблокировано!*\n\n{icon} *{title}*\n_{desc}_"
+  "achievement_unlocked_toast": "🎉 *Новое достижение разблокировано!*\n\n{icon} *{title}*\n_{desc}_",
+
+  "btn_exam_listening": "🎧 Аудирование (Hörverstehen)",
+  "listening_welcome": "🎧🪶 *Тренажер аудирования Goethe & Telc (Hörverstehen)*\n\nСлушай настоящие немецкие объявления, сообщения на автоответчике и диалоги на слух.\n\nВыбери уровень сложности:",
+  "listening_listen_prompt": "🎧 *Внимательно прослушай аудиозапись выше и ответь на вопрос:*\n\n❓ {question}",
+  "listening_correct": "🎉 *Точно! Отличный слух!* (+1 очко)",
+  "listening_wrong": "❌ *Неверно.* Правильный ответ: *{correct}*",
+  "listening_transcript_header": "📜 *Транскрипция (Hörtext):*",
+  "btn_listening_next": "🎧 Следующее аудио"
 }
 

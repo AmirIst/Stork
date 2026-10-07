@@ -811,6 +811,11 @@ ACHIEVEMENTS_REGISTRY: Dict[str, Dict[str, Any]] = {
         "icon": "🎓",
         "title": {"ru": "Сертификат CEFR", "en": "CEFR Certified"},
         "desc": {"ru": "Пройти тест и подтвердить свой уровень языка", "en": "Complete placement test to determine CEFR level"}
+    },
+    "listening_ear": {
+        "icon": "🎧",
+        "title": {"ru": "Чуткое ухо", "en": "Sharp Ear"},
+        "desc": {"ru": "Правильно ответить в тренажере аудирования", "en": "Answer correctly in listening comprehension"}
     }
 }
 

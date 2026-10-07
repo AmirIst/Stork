@@ -70,6 +70,7 @@ def get_exams_hub_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=i18n.get("btn_exam_trainer", lang), callback_data="menu_exam")],
         [InlineKeyboardButton(text=i18n.get("btn_exam_sprechen", lang), callback_data="menu_sprechen")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_listening", lang), callback_data="menu_listening")],
         [InlineKeyboardButton(text=i18n.get("btn_placement_test", lang), callback_data="menu_placement")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
@@ -388,6 +389,32 @@ def get_sprechen_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔊 Озвучить эталон (Musterantwort)" if lang == "ru" else "🔊 Listen to Model Answer", callback_data="spr_voice_sample")],
         [InlineKeyboardButton(text="🎙️ Следующий билет" if lang == "ru" else "🎙️ Next Task", callback_data="menu_sprechen")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_listening_levels_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура выбора уровня для тренажера аудирования"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_a1", lang), callback_data="hv_lvl:A1")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_a2", lang), callback_data="hv_lvl:A2")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_b1", lang), callback_data="hv_lvl:B1")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_random", lang), callback_data="hv_lvl:RANDOM")],
+        [InlineKeyboardButton(text=i18n.get("btn_hub_exams", lang), callback_data="hub_exams")]
+    ])
+
+def get_listening_question_keyboard(task_id: str, options: List[str], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура с 4 вариантами ответа на вопрос аудирования"""
+    buttons = []
+    for idx, opt in enumerate(options):
+        buttons.append([InlineKeyboardButton(text=opt, callback_data=f"hv_ans:{task_id}:{idx}")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_hub_exams", lang), callback_data="hub_exams")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_listening_result_keyboard(level: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после ответа на вопрос аудирования"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_listening_next", lang), callback_data=f"hv_next:{level}")],
+        [InlineKeyboardButton(text=i18n.get("btn_hub_exams", lang), callback_data="hub_exams")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 

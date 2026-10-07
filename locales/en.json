@@ -111,6 +111,14 @@
   "achievements_title": "🏆 *Your Achievements & Trophies ({unlocked} of {total})*\n\nStudy daily to unlock the entire collection of feather badges!",
   "achievements_unlocked_header": "🌟 *Unlocked Badges:*",
   "achievements_locked_header": "🔒 *Next Goals:*",
-  "achievement_unlocked_toast": "🎉 *New Achievement Unlocked!*\n\n{icon} *{title}*\n_{desc}_"
+  "achievement_unlocked_toast": "🎉 *New Achievement Unlocked!*\n\n{icon} *{title}*\n_{desc}_",
+
+  "btn_exam_listening": "🎧 Listening (Hörverstehen)",
+  "listening_welcome": "🎧🪶 *Goethe & Telc Listening Comprehension*\n\nListen to authentic German announcements, voicemail messages, and conversations.\n\nChoose target level:",
+  "listening_listen_prompt": "🎧 *Listen carefully to the audio above and answer the question:*\n\n❓ {question}",
+  "listening_correct": "🎉 *Spot on! Great listening ear!* (+1 point)",
+  "listening_wrong": "❌ *Incorrect.* Correct answer: *{correct}*",
+  "listening_transcript_header": "📜 *Transcript (Hörtext):*",
+  "btn_listening_next": "🎧 Next Audio"
 }
 

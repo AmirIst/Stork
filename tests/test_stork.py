@@ -458,6 +458,45 @@ async def test_db_achievements_unlock_and_grant():
     assert "first_step" in unlocked_ids
     assert "verbs_sprinter" in unlocked_ids
 
+def test_listening_tasks_integrity():
+    from services.listening_service import LISTENING_TASKS, get_listening_task
+    assert len(LISTENING_TASKS) >= 8
+    for t in LISTENING_TASKS:
+        assert t["id"]
+        assert t["level"] in ("A1", "A2", "B1")
+        assert len(t["audio_text"]) > 20
+        assert "ru" in t["question"] and "en" in t["question"]
+        assert len(t["options"]["ru"]) == 4 and len(t["options"]["en"]) == 4
+        assert t["correct_index"] in (0, 1, 2, 3)
+        assert "ru" in t["explanation"] and "en" in t["explanation"]
+        assert "ru" in t["transcript_tr"] and "en" in t["transcript_tr"]
+
+    task_a1 = get_listening_task("A1")
+    assert task_a1["level"] == "A1"
+
+    task_b1 = get_listening_task("B1")
+    assert task_b1["level"] == "B1"
+
+    task_by_id = get_listening_task(task_id="hv_a1_1")
+    assert task_by_id["id"] == "hv_a1_1"
+
+def test_locales_listening_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    keys = [
+        "btn_exam_listening", "listening_welcome", "listening_listen_prompt",
+        "listening_correct", "listening_wrong", "listening_transcript_header",
+        "btn_listening_next"
+    ]
+    for k in keys:
+        assert k in ru, f"Missing key {k} in ru.json"
+        assert k in en, f"Missing key {k} in en.json"
+
 
 
 
