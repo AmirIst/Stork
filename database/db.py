@@ -5,6 +5,15 @@ from typing import Optional, Dict, Any, List, Tuple
 import aiosqlite
 from config import DB_PATH, DEFAULT_LANGUAGE
 from database.words_data import INITIAL_WORDS, CATEGORY_METADATA
+from premium_config import (
+    FREE_TRIAL_DAYS,
+    PROMO_CODES,
+    PREMIUM_PLANS,
+    REFERRAL_CONFIG,
+    get_promo_info,
+    get_plan_by_id,
+    get_plan_price,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +104,28 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_achieve_user ON user_achievements(user_id);")
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS user_promo_activations (
+            user_id INTEGER NOT NULL,
+            promo_code TEXT NOT NULL,
+            activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            days_granted INTEGER DEFAULT 0,
+            PRIMARY KEY(user_id, promo_code)
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_promo_user ON user_promo_activations(user_id);")
+
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inviter_id INTEGER NOT NULL,
+            referred_id INTEGER NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_ref_inviter ON referrals(inviter_id);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_ref_referred ON referrals(referred_id);")
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -110,6 +141,8 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN is_premium INTEGER DEFAULT 0")
             if "premium_until" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN premium_until TIMESTAMP")
+            if "trial_used" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN trial_used INTEGER DEFAULT 0")
             if "daily_ai_count" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN daily_ai_count INTEGER DEFAULT 0")
             if "daily_exam_count" not in user_cols:
@@ -170,7 +203,9 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
         async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
-                return dict(row)
+                res = dict(row)
+                res["is_new"] = False
+                return res
 
         await db.execute(
             "INSERT INTO users (user_id, username, first_name, native_lang, selected_level, selected_category) VALUES (?, ?, ?, ?, 'ALL', 'ALL')",
@@ -185,7 +220,9 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
             "selected_level": "ALL",
             "selected_category": "ALL",
             "score": 0,
-            "streak": 0
+            "streak": 0,
+            "trial_used": 0,
+            "is_new": True
         }
 
 async def update_user_lang(user_id: int, lang: str):
@@ -592,16 +629,187 @@ async def is_user_premium(user_id: int) -> Tuple[bool, Optional[str]]:
             return True, premium_until
 
 async def activate_premium(user_id: int, days: int = 30) -> str:
-    """Активировать Stork Premium на указанное количество дней"""
-    until_dt = datetime.now(timezone.utc) + timedelta(days=days)
-    until_str = until_dt.isoformat()
+    """
+    Активировать или продлить Stork Premium на указанное количество дней.
+    Если у пользователя уже есть активная подписка, дни добавляются к текущему сроку.
+    """
+    now = datetime.now(timezone.utc)
+    base_dt = now
+
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT premium_until FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row["premium_until"]:
+                try:
+                    curr_dt = datetime.fromisoformat(row["premium_until"])
+                    if curr_dt.tzinfo is None:
+                        curr_dt = curr_dt.replace(tzinfo=timezone.utc)
+                    if curr_dt > now:
+                        base_dt = curr_dt
+                except Exception:
+                    base_dt = now
+
+        until_dt = base_dt + timedelta(days=days)
+        until_str = until_dt.isoformat()
         await db.execute(
             "UPDATE users SET is_premium = 1, premium_until = ? WHERE user_id = ?",
             (until_str, user_id)
         )
         await db.commit()
     return until_str
+
+async def is_trial_available(user_id: int) -> bool:
+    """Проверить, доступен ли пользователю бесплатный пробный период"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT trial_used FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0]:
+                return False
+            return True
+
+async def activate_trial_if_eligible(user_id: int, days: int = FREE_TRIAL_DAYS) -> Tuple[bool, str, Optional[str]]:
+    """
+    Активировать одноразовый пробный период на days дней.
+    Возвращает (успех, статус, дата_окончания).
+    Статусы: 'success', 'already_used'.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT trial_used, premium_until FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row["trial_used"]:
+                return False, "already_used", row["premium_until"]
+
+        await db.execute("UPDATE users SET trial_used = 1 WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+    until_str = await activate_premium(user_id, days=days)
+    return True, "success", until_str
+
+async def activate_promo_code(user_id: int, code: str) -> Tuple[bool, str, int, Optional[str]]:
+    """
+    Проверить и активировать промокод.
+    Каждый промокод одноразовый для каждого конкретного пользователя.
+    Возвращает: (успех, статус, начислено_дней, дата_окончания).
+    Статусы: 'success', 'already_used', 'invalid_code'.
+    """
+    promo_info = get_promo_info(code)
+    if not promo_info:
+        return False, "invalid_code", 0, None
+
+    normalized_code = code.strip().upper()
+    days = int(promo_info.get("days", 30))
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Проверяем, активировал ли этот пользователь данный промокод ранее
+        async with db.execute(
+            "SELECT 1 FROM user_promo_activations WHERE user_id = ? AND promo_code = ?",
+            (user_id, normalized_code)
+        ) as cursor:
+            if await cursor.fetchone():
+                _, until_str = await is_user_premium(user_id)
+                return False, "already_used", 0, until_str
+
+        # Фиксируем активацию
+        await db.execute(
+            "INSERT INTO user_promo_activations (user_id, promo_code, days_granted) VALUES (?, ?, ?)",
+            (user_id, normalized_code, days)
+        )
+        await db.commit()
+
+    until_str = await activate_premium(user_id, days=days)
+    return True, "success", days, until_str
+
+async def register_referral(inviter_id: int, referred_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Зарегистрировать приглашенного пользователя.
+    Начисляет инвайтеру +1 день (или по REFERRAL_CONFIG),
+    а при достижении 10 рефералов дарит супер-бонус +5 дней (суммарно 15 дней).
+    """
+    if inviter_id == referred_id:
+        return None
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Проверяем, был ли referred_id уже приглашен
+        async with db.execute("SELECT 1 FROM referrals WHERE referred_id = ?", (referred_id,)) as cursor:
+            if await cursor.fetchone():
+                return None
+
+        # Проверяем наличие инвайтера в базе
+        async with db.execute("SELECT 1 FROM users WHERE user_id = ?", (inviter_id,)) as cursor:
+            if not await cursor.fetchone():
+                return None
+
+        try:
+            await db.execute(
+                "INSERT INTO referrals (inviter_id, referred_id) VALUES (?, ?)",
+                (inviter_id, referred_id)
+            )
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Ошибка сохранения реферала {inviter_id} -> {referred_id}: {e}")
+            return None
+
+        async with db.execute("SELECT COUNT(*) FROM referrals WHERE inviter_id = ?", (inviter_id,)) as cursor:
+            row = await cursor.fetchone()
+            total_count = row[0] if row else 1
+
+    days_per_invite = REFERRAL_CONFIG.get("days_per_invite", 1)
+    milestone_target = REFERRAL_CONFIG.get("milestone_invites", 10)
+    milestone_bonus = REFERRAL_CONFIG.get("milestone_bonus_days", 5)
+
+    days_to_grant = days_per_invite
+    milestone_hit = False
+
+    if total_count == milestone_target:
+        days_to_grant += milestone_bonus
+        milestone_hit = True
+
+    new_until = await activate_premium(inviter_id, days=days_to_grant)
+
+    return {
+        "success": True,
+        "total_referrals": total_count,
+        "days_granted": days_to_grant,
+        "milestone_hit": milestone_hit,
+        "new_until": new_until,
+    }
+
+async def get_referral_stats(user_id: int) -> Dict[str, Any]:
+    """
+    Получить статистику рефералов для пользователя:
+    - количество приглашенных
+    - заработано дней
+    - достигнута ли цель
+    - активна ли скидка 50%
+    """
+    milestone_target = REFERRAL_CONFIG.get("milestone_invites", 10)
+    days_per_invite = REFERRAL_CONFIG.get("days_per_invite", 1)
+    milestone_bonus = REFERRAL_CONFIG.get("milestone_bonus_days", 5)
+    discount_percent = REFERRAL_CONFIG.get("milestone_discount_percent", 50)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM referrals WHERE inviter_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            count = row[0] if row else 0
+
+    days_earned = count * days_per_invite
+    if count >= milestone_target:
+        days_earned += milestone_bonus
+
+    milestone_reached = count >= milestone_target
+    needed = max(0, milestone_target - count)
+
+    return {
+        "count": count,
+        "days_earned": days_earned,
+        "milestone_target": milestone_target,
+        "milestone_reached": milestone_reached,
+        "needed_for_milestone": needed,
+        "has_discount": milestone_reached,
+        "discount_percent": discount_percent if milestone_reached else 0,
+    }
 
 async def check_ai_quota(user_id: int) -> Tuple[bool, int, int]:
     """

@@ -1,7 +1,9 @@
+import urllib.parse
 from typing import List, Dict, Any, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from locales.manager import i18n
 from database.words_data import CATEGORY_METADATA
+from premium_config import PREMIUM_PLANS, get_plan_price, REFERRAL_CONFIG
 
 def get_language_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура выбора языка"""
@@ -252,17 +254,66 @@ def get_achievements_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 
-def get_premium_keyboard(lang: str = "ru", is_active: bool = False) -> InlineKeyboardMarkup:
+def get_premium_keyboard(
+    lang: str = "ru",
+    is_active: bool = False,
+    trial_available: bool = True,
+    has_discount: bool = False
+) -> InlineKeyboardMarkup:
     """Клавиатура оформления и управления тарифом Stork Premium"""
     buttons = []
-    if not is_active:
+    if trial_available:
         buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_trial", lang), callback_data="premium_trial")])
-        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_buy_stars", lang), callback_data="premium_buy_stars")])
-        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_promo", lang), callback_data="premium_promo")])
-    else:
-        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_buy_stars", lang), callback_data="premium_buy_stars")])
-        buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_promo", lang), callback_data="premium_promo")])
+
+    plan_btn_title = "⭐️ Тарифы подписки (скидка 50% 🔥)" if (has_discount and lang == "ru") else (
+        "⭐️ Plans (50% OFF 🔥)" if has_discount else i18n.get("btn_premium_plans", lang)
+    )
+    buttons.append([InlineKeyboardButton(text=plan_btn_title, callback_data="premium_plans")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_referrals", lang), callback_data="menu_referrals")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_premium_promo", lang), callback_data="premium_promo")])
     buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_premium_plans_keyboard(lang: str = "ru", has_discount: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура выбора тарифов Stork Premium из premium_config.py"""
+    buttons = []
+    for plan in PREMIUM_PLANS:
+        price = get_plan_price(plan, has_discount=has_discount)
+        title = plan["title_ru"] if lang == "ru" else plan["title_en"]
+        if has_discount and plan.get("is_monthly"):
+            text = f"⭐️ {title} — {price} Stars (-50% 🔥)"
+        else:
+            text = f"⭐️ {title} — {price} Stars"
+        buttons.append([InlineKeyboardButton(text=text, callback_data=f"buy_plan:{plan['id']}")])
+
+    buttons.append([
+        InlineKeyboardButton(text="⬅️ Назад в Премиум" if lang == "ru" else "⬅️ Back to Premium", callback_data="menu_premium"),
+        InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_referral_keyboard(referral_link: str, lang: str = "ru", has_discount: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура реферальной программы со ссылкой поделиться"""
+    share_text = (
+        "Учи немецкий язык с умным ботом Stork! 🇩🇪🪶 Присоединяйся по ссылке:"
+        if lang == "ru"
+        else "Learn German with smart AI tutor Stork! 🇩🇪🪶 Join via my link:"
+    )
+    share_url = f"https://t.me/share/url?url={urllib.parse.quote(referral_link)}&text={urllib.parse.quote(share_text)}"
+
+    buttons = [
+        [InlineKeyboardButton(text="🚀 Поделиться с другом" if lang == "ru" else "🚀 Share with Friends", url=share_url)],
+        [InlineKeyboardButton(
+            text="⭐️ Тарифы со скидкой 50% 🔥" if has_discount else ("⭐️ Оформить Premium" if lang == "ru" else "⭐️ Get Premium"),
+            callback_data="premium_plans"
+        )],
+        [
+            InlineKeyboardButton(text="⬅️ Назад в Премиум" if lang == "ru" else "⬅️ Back to Premium", callback_data="menu_premium"),
+            InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
+        ]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_quota_exceeded_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:

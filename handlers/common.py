@@ -26,12 +26,56 @@ router = Router()
 async def cmd_start(message: Message, state: FSMContext):
     """Команда /start: приветствие и инициализация пользователя"""
     await state.clear()
+    
+    # Проверяем реферальный аргумент (например, /start ref_123456)
+    ref_arg = None
+    parts = (message.text or "").split()
+    if len(parts) > 1 and parts[1].startswith("ref_"):
+        ref_arg = parts[1].replace("ref_", "")
+
     user = await db.get_or_create_user(
         user_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name
     )
     lang = user["native_lang"]
+
+    if user.get("is_new") and ref_arg:
+        try:
+            inviter_id = int(ref_arg)
+            if inviter_id != message.from_user.id:
+                ref_res = await db.register_referral(inviter_id, message.from_user.id)
+                if ref_res and message.bot:
+                    try:
+                        inv_lang = await db.get_user_lang(inviter_id)
+                        if ref_res.get("milestone_hit"):
+                            notif = (
+                                "🔥 *Супер-бонус реферальной программы!*\n\n"
+                                "По твоей ссылке пришел 10-й друг! 🎉\n"
+                                "Тебе начислен супер-бонус: *+5 дней* (суммарно *15 дней* премиума за 10 человек) "
+                                "и навсегда открыта *скидка 50%* на месячный Stork Premium! 👑"
+                                if inv_lang == "ru" else
+                                "🔥 *Referral Milestone Reached!*\n\n"
+                                "Your 10th friend just joined! 🎉\n"
+                                "You received a super-bonus: *+5 days* (total *15 days* of Premium for 10 friends) "
+                                "and unlocked a lifetime *50% discount* on monthly Stork Premium! 👑"
+                            )
+                        else:
+                            cnt = ref_res.get("total_referrals", 1)
+                            notif = (
+                                f"🎉 *Новый друг в Stork!*\n\n"
+                                f"По твоей ссылке зарегистрировался новый ученик! Начислен *+1 день Stork Premium* ⭐️\n"
+                                f"Всего приглашено: *{cnt}/10*. Пригласи 10 друзей, чтобы получить супер-бонус и скидку 50%!"
+                                if inv_lang == "ru" else
+                                f"🎉 *New friend in Stork!*\n\n"
+                                f"Someone just joined via your link! You received *+1 day of Stork Premium* ⭐️\n"
+                                f"Total invited: *{cnt}/10*. Invite 10 friends to unlock super-bonus and 50% discount!"
+                            )
+                        await message.bot.send_message(inviter_id, notif, parse_mode="Markdown")
+                    except Exception as e:
+                        logger.info(f"Could not send referral notification to {inviter_id}: {e}")
+        except ValueError:
+            pass
 
     text = i18n.get("welcome", lang, name=message.from_user.first_name or "Freund")
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="Markdown")

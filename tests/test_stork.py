@@ -538,6 +538,147 @@ def test_locales_roleplay_keys():
     from database.db import ACHIEVEMENTS_REGISTRY
     assert "roleplay_master" in ACHIEVEMENTS_REGISTRY
 
+def test_premium_config_integrity():
+    from premium_config import (
+        FREE_TRIAL_DAYS,
+        PROMO_CODES,
+        PREMIUM_PLANS,
+        REFERRAL_CONFIG,
+        get_promo_info,
+        get_plan_by_id,
+        get_plan_price,
+    )
+    assert FREE_TRIAL_DAYS == 7
+    assert len(PROMO_CODES) >= 5
+    for code, data in PROMO_CODES.items():
+        assert "days" in data and data["days"] > 0
+        assert "description" in data
+
+    assert len(PREMIUM_PLANS) >= 3
+    plan_ids = [p["id"] for p in PREMIUM_PLANS]
+    assert "plan_1d" in plan_ids
+    assert "plan_10d" in plan_ids
+    assert "plan_30d" in plan_ids
+
+    # Проверка расчета цен и скидки
+    monthly_plan = get_plan_by_id("plan_30d")
+    assert monthly_plan is not None
+    assert monthly_plan["is_monthly"] is True
+    regular_price = get_plan_price(monthly_plan, has_discount=False)
+    assert regular_price == 150
+    discounted_price = get_plan_price(monthly_plan, has_discount=True)
+    assert discounted_price == 75 # 50% скидка
+
+    # План на 1 день не получает скидку
+    daily_plan = get_plan_by_id("plan_1d")
+    assert get_plan_price(daily_plan, has_discount=True) == daily_plan["stars"]
+
+    # Проверка реферального конфига
+    assert REFERRAL_CONFIG["days_per_invite"] == 1
+    assert REFERRAL_CONFIG["milestone_invites"] == 10
+    assert REFERRAL_CONFIG["milestone_bonus_days"] == 5
+    assert REFERRAL_CONFIG["milestone_discount_percent"] == 50
+
+@pytest.mark.anyio
+async def test_trial_one_time_enforcement():
+    from database import db
+    await db.init_db()
+
+    test_uid = 999111001
+    await db.get_or_create_user(test_uid, "trial_user", "Tester")
+
+    # Проверяем доступность до активации
+    assert await db.is_trial_available(test_uid) is True
+
+    # Первая активация
+    ok, status, until = await db.activate_trial_if_eligible(test_uid, days=7)
+    assert ok is True
+    assert status == "success"
+    assert until is not None
+
+    # Теперь триал недоступен
+    assert await db.is_trial_available(test_uid) is False
+
+    # Вторая активация должна быть заблокирована
+    ok2, status2, _ = await db.activate_trial_if_eligible(test_uid, days=7)
+    assert ok2 is False
+    assert status2 == "already_used"
+
+@pytest.mark.anyio
+async def test_promo_code_one_time_per_user():
+    from database import db
+    await db.init_db()
+
+    test_uid = 999222002
+    await db.get_or_create_user(test_uid, "promo_user", "Tester")
+
+    # 1. Неверный промокод
+    ok, status, days, _ = await db.activate_promo_code(test_uid, "INVALID_CODE_XYZ")
+    assert ok is False
+    assert status == "invalid_code"
+
+    # 2. Успешная активация валидного промокода
+    ok, status, days, until = await db.activate_promo_code(test_uid, "storkvip")
+    assert ok is True
+    assert status == "success"
+    assert days == 30
+    assert until is not None
+
+    # 3. Повторная активация того же промокода должна быть отклонена
+    ok_dup, status_dup, _, _ = await db.activate_promo_code(test_uid, "STORKVIP")
+    assert ok_dup is False
+    assert status_dup == "already_used"
+
+@pytest.mark.anyio
+async def test_referral_system_and_milestones():
+    from database import db
+    await db.init_db()
+
+    inviter_id = 999333000
+    await db.get_or_create_user(inviter_id, "inviter", "Inviter")
+
+    # Самореферал запрещен
+    self_res = await db.register_referral(inviter_id, inviter_id)
+    assert self_res is None
+
+    # Регистрируем 9 рефералов
+    for i in range(1, 10):
+        ref_uid = 999333000 + i
+        await db.get_or_create_user(ref_uid, f"ref_{i}", f"Ref{i}")
+        res = await db.register_referral(inviter_id, ref_uid)
+        assert res is not None
+        assert res["success"] is True
+        assert res["total_referrals"] == i
+        assert res["milestone_hit"] is False
+        assert res["days_granted"] == 1
+
+    stats_9 = await db.get_referral_stats(inviter_id)
+    assert stats_9["count"] == 9
+    assert stats_9["days_earned"] == 9
+    assert stats_9["milestone_reached"] is False
+    assert stats_9["has_discount"] is False
+
+    # 10-й реферал -> срабатывает супер-бонус (+5 дней, итого 15 дней суммарно!)
+    tenth_uid = 999333010
+    await db.get_or_create_user(tenth_uid, "ref_10", "Ref10")
+    res_10 = await db.register_referral(inviter_id, tenth_uid)
+    assert res_10 is not None
+    assert res_10["total_referrals"] == 10
+    assert res_10["milestone_hit"] is True
+    assert res_10["days_granted"] == 6 # 1 базовый + 5 бонусных
+
+    stats_10 = await db.get_referral_stats(inviter_id)
+    assert stats_10["count"] == 10
+    assert stats_10["days_earned"] == 15 # 10 * 1 + 5 = 15 дней ровно как в ТЗ!
+    assert stats_10["milestone_reached"] is True
+    assert stats_10["has_discount"] is True
+    assert stats_10["discount_percent"] == 50
+
+    # Повторная регистрация того же реферала отклоняется
+    dup_res = await db.register_referral(inviter_id, tenth_uid)
+    assert dup_res is None
+
+
 
 
 
