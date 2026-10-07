@@ -957,6 +957,51 @@ def test_placement_share_certificate_keyboard():
     assert "B1" in first_btn_en.url
 
 
+def test_tribute_config_and_keyboard():
+    """Тест работы конфигурации Tribute и отображения кнопок оплаты картой"""
+    import premium_config
+    from keyboards.inline import get_premium_plans_keyboard
+
+    # 1. По умолчанию ссылки None, кнопки не отображаются (только Stars и навигация)
+    premium_config.TRIBUTE_CONFIG["plan_10d_url"] = None
+    premium_config.TRIBUTE_CONFIG["plan_30d_url"] = None
+    premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = None
+
+    kb = get_premium_plans_keyboard(lang="ru")
+    all_texts = [btn.text for row in kb.inline_keyboard for btn in row]
+    assert not any("картой" in t.lower() for t in all_texts)
+
+    # 2. Устанавливаем тестовые ссылки Tribute
+    premium_config.TRIBUTE_CONFIG["plan_10d_url"] = "https://t.me/tribute/app?startapp=p10d"
+    premium_config.TRIBUTE_CONFIG["plan_30d_url"] = "https://t.me/tribute/app?startapp=p30d"
+    premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = "https://t.me/tribute/app?startapp=p30d_sale"
+
+    # Обычный пользователь (без скидки)
+    kb_with_cards = get_premium_plans_keyboard(lang="ru", has_discount=False)
+    card_buttons = [btn for row in kb_with_cards.inline_keyboard for btn in row if "картой" in btn.text.lower()]
+    assert len(card_buttons) == 2
+    assert card_buttons[0].url == "https://t.me/tribute/app?startapp=p10d"
+    assert card_buttons[1].url == "https://t.me/tribute/app?startapp=p30d"
+
+    # Пользователь со скидкой 50%
+    kb_discount = get_premium_plans_keyboard(lang="ru", has_discount=True)
+    card_buttons_disc = [btn for row in kb_discount.inline_keyboard for btn in row if "картой" in btn.text.lower()]
+    assert len(card_buttons_disc) == 2
+    assert card_buttons_disc[1].url == "https://t.me/tribute/app?startapp=p30d_sale"
+    assert "-50%" in card_buttons_disc[1].text
+
+    # Английская локаль
+    kb_en = get_premium_plans_keyboard(lang="en", has_discount=False)
+    card_buttons_en = [btn for row in kb_en.inline_keyboard for btn in row if "card" in btn.text.lower()]
+    assert len(card_buttons_en) == 2
+
+    # Очищаем обратно на None
+    premium_config.TRIBUTE_CONFIG["plan_10d_url"] = None
+    premium_config.TRIBUTE_CONFIG["plan_30d_url"] = None
+    premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = None
+
+
+
 
 
 

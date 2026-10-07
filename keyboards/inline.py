@@ -3,7 +3,13 @@ from typing import List, Dict, Any, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from locales.manager import i18n
 from database.words_data import CATEGORY_METADATA
-from premium_config import PREMIUM_PLANS, get_plan_price, REFERRAL_CONFIG
+from premium_config import (
+    PREMIUM_PLANS,
+    get_plan_price,
+    REFERRAL_CONFIG,
+    TRIBUTE_CONFIG,
+    get_tribute_url
+)
 
 def get_language_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура выбора языка"""
@@ -300,10 +306,26 @@ def get_premium_plans_keyboard(lang: str = "ru", has_discount: bool = False) -> 
         price = get_plan_price(plan, has_discount=has_discount)
         title = plan["title_ru"] if lang == "ru" else plan["title_en"]
         if has_discount and plan.get("is_monthly"):
-            text = f"⭐️ {title} — {price} Stars (-50% 🔥)"
+            text = f"⭐️ {title}: {price} Stars (-50% 🔥)"
         else:
-            text = f"⭐️ {title} — {price} Stars"
+            text = f"⭐️ {title}: {price} Stars"
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"buy_plan:{plan['id']}")])
+
+    # Дополнительные способы оплаты картой (EUR / СБП через Tribute)
+    if TRIBUTE_CONFIG.get("enabled", False):
+        tribute_10d = get_tribute_url("plan_10d")
+        tribute_30d = get_tribute_url("plan_30d", has_discount=has_discount)
+
+        if tribute_10d and isinstance(tribute_10d, str) and tribute_10d.startswith("http"):
+            text_10d = "💳 10 дней картой (EUR / СБП)" if lang == "ru" else "💳 10 days by card (EUR)"
+            buttons.append([InlineKeyboardButton(text=text_10d, url=tribute_10d)])
+
+        if tribute_30d and isinstance(tribute_30d, str) and tribute_30d.startswith("http"):
+            if has_discount:
+                text_30d = "💳 1 месяц картой (-50% 🔥)" if lang == "ru" else "💳 1 month by card (-50% 🔥)"
+            else:
+                text_30d = "💳 1 месяц картой (EUR / СБП)" if lang == "ru" else "💳 1 month by card (EUR)"
+            buttons.append([InlineKeyboardButton(text=text_30d, url=tribute_30d)])
 
     buttons.append([
         InlineKeyboardButton(text="⬅️ Назад в Премиум" if lang == "ru" else "⬅️ Back to Premium", callback_data="menu_premium"),

@@ -129,6 +129,24 @@ LIFETIME_VIP_USERS: List[Any] = [
 ]
 
 
+# ------------------------------------------------------------------------------
+# 6. ОПЛАТА КАРТОЙ ЧЕРЕЗ TRIBUTE (EUR / RUB / СБП)
+# ------------------------------------------------------------------------------
+# Здесь указываются прямые ссылки на оплату товаров в Tribute (https://tribute.tg).
+# Покупатель может платить картой Visa/Mastercard (в EUR/USD/RUB), через Apple Pay или СБП.
+# После создания товара в Tribute просто вставь полученную ссылку сюда:
+# Пример ссылки: "https://t.me/tribute/app?startapp=p123"
+TRIBUTE_CONFIG: Dict[str, Any] = {
+    "enabled": True,
+    # Ссылка на товар "Stork Premium (10 дней)"
+    "plan_10d_url": None,
+    # Ссылка на товар "Stork Premium (1 месяц)"
+    "plan_30d_url": None,
+    # Ссылка на товар "Stork Premium (1 месяц со скидкой 50%)" для рефералов
+    "plan_30d_discount_url": None,
+}
+
+
 # ==============================================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С КОНФИГУРАЦИЕЙ
 # ==============================================================================
@@ -178,3 +196,17 @@ def get_plan_price(plan: Dict[str, Any], has_discount: bool = False) -> int:
         discounted = int(round(base_stars * (1.0 - discount / 100.0)))
         return max(1, discounted)
     return base_stars
+
+
+def get_tribute_url(plan_id: str, has_discount: bool = False) -> Optional[str]:
+    """Получить ссылку на оплату через Tribute для выбранного тарифа"""
+    if not TRIBUTE_CONFIG.get("enabled", False):
+        return None
+    if plan_id == "plan_10d":
+        return TRIBUTE_CONFIG.get("plan_10d_url")
+    if plan_id == "plan_30d":
+        if has_discount and TRIBUTE_CONFIG.get("plan_30d_discount_url"):
+            return TRIBUTE_CONFIG.get("plan_30d_discount_url")
+        return TRIBUTE_CONFIG.get("plan_30d_url")
+    return None
+
