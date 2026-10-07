@@ -119,6 +119,13 @@
   "listening_correct": "🎉 *Spot on! Great listening ear!* (+1 point)",
   "listening_wrong": "❌ *Incorrect.* Correct answer: *{correct}*",
   "listening_transcript_header": "📜 *Transcript (Hörtext):*",
-  "btn_listening_next": "🎧 Next Audio"
+  "btn_listening_next": "🎧 Next Audio",
+
+  "btn_roleplay": "🎭 Roleplay in Germany",
+  "roleplay_welcome": "🎭🪶 *Interactive Roleplay: Life in Germany*\n\nExperience real-life situations: order at a cafe, buy a ticket, visit a doctor, or register at Bürgeramt!\n\nStork acts as your German speaking partner. You can reply with text or voice messages.\n\nChoose a scenario:",
+  "btn_rp_hint": "💡 Hint",
+  "btn_rp_voice": "🔊 Listen to Reply",
+  "btn_rp_finish": "🏁 Finish Conversation",
+  "btn_rp_next": "🎭 Another Scenario"
 }
 

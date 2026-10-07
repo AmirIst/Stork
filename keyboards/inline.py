@@ -37,6 +37,7 @@ def get_training_hub_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=i18n.get("btn_articles", lang), callback_data="menu_articles")],
         [InlineKeyboardButton(text=i18n.get("btn_verbs_sprint", lang), callback_data="menu_verbs_sprint")],
+        [InlineKeyboardButton(text=i18n.get("btn_roleplay", lang), callback_data="menu_roleplay")],
         [InlineKeyboardButton(text=i18n.get("btn_quiz", lang), callback_data="menu_quiz")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
@@ -415,6 +416,37 @@ def get_listening_result_keyboard(level: str, lang: str = "ru") -> InlineKeyboar
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=i18n.get("btn_listening_next", lang), callback_data=f"hv_next:{level}")],
         [InlineKeyboardButton(text=i18n.get("btn_hub_exams", lang), callback_data="hub_exams")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_roleplay_scenarios_keyboard(scenarios: List[Dict[str, Any]], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура выбора сценария ролевой игры"""
+    buttons = []
+    for s in scenarios:
+        title = s["title"].get(lang, s["title"]["ru"])
+        btn_text = f"{s['icon']} {title}"
+        buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"rp_start:{s['id']}")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_hub_training", lang), callback_data="hub_training")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_roleplay_in_dialog_keyboard(scenario_id: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура во время активного ролевого диалога"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=i18n.get("btn_rp_hint", lang), callback_data=f"rp_hint:{scenario_id}"),
+            InlineKeyboardButton(text=i18n.get("btn_rp_voice", lang), callback_data="rp_voice_last")
+        ],
+        [
+            InlineKeyboardButton(text=i18n.get("btn_rp_finish", lang), callback_data="rp_finish"),
+            InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
+        ]
+    ])
+
+def get_roleplay_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после завершения ролевого диалога и получения оценки"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_rp_next", lang), callback_data="menu_roleplay")],
+        [InlineKeyboardButton(text=i18n.get("btn_hub_training", lang), callback_data="hub_training")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 

@@ -816,6 +816,11 @@ ACHIEVEMENTS_REGISTRY: Dict[str, Dict[str, Any]] = {
         "icon": "🎧",
         "title": {"ru": "Чуткое ухо", "en": "Sharp Ear"},
         "desc": {"ru": "Правильно ответить в тренажере аудирования", "en": "Answer correctly in listening comprehension"}
+    },
+    "roleplay_master": {
+        "icon": "🎭",
+        "title": {"ru": "Мастер ролевой игры", "en": "Roleplay Master"},
+        "desc": {"ru": "Успешно завершить ролевой диалог в Германии", "en": "Complete a German roleplay scenario"}
     }
 }
 

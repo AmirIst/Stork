@@ -10,7 +10,7 @@ from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database.db import init_db
-from handlers import common, articles, cards, quiz, exam, placement, ai_chat, filters, voice, premium, verbs, sprechen, listening
+from handlers import common, articles, cards, quiz, exam, placement, ai_chat, filters, voice, premium, verbs, sprechen, listening, roleplay
 from services.reminder_service import run_daily_reminder_worker
 
 # Настройка логирования
@@ -59,6 +59,7 @@ async def main():
     dp.include_router(verbs.router)
     dp.include_router(sprechen.router)
     dp.include_router(listening.router)
+    dp.include_router(roleplay.router)
 
     await setup_bot_commands(bot)
 

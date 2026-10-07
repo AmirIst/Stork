@@ -497,6 +497,47 @@ def test_locales_listening_keys():
         assert k in ru, f"Missing key {k} in ru.json"
         assert k in en, f"Missing key {k} in en.json"
 
+def test_roleplay_scenarios_integrity():
+    from services.roleplay_service import ROLEPLAY_SCENARIOS, get_roleplay_scenario
+    assert len(ROLEPLAY_SCENARIOS) >= 5
+    for s in ROLEPLAY_SCENARIOS:
+        assert s["id"]
+        assert s["level"] in ("A1", "A2", "B1")
+        assert s["icon"]
+        assert "ru" in s["title"] and "en" in s["title"]
+        assert "ru" in s["character"] and "en" in s["character"]
+        assert "ru" in s["goal"] and "en" in s["goal"]
+        assert len(s["starter_de"]) > 10
+        assert "ru" in s["starter_tr"] and "en" in s["starter_tr"]
+        assert len(s["hints"]["ru"]) >= 2
+
+    cafe = get_roleplay_scenario("cafe_a1")
+    assert cafe is not None
+    assert cafe["level"] == "A1"
+
+    hotel = get_roleplay_scenario("hotel_b1")
+    assert hotel is not None
+    assert hotel["level"] == "B1"
+
+def test_locales_roleplay_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    keys = [
+        "btn_roleplay", "roleplay_welcome", "btn_rp_hint",
+        "btn_rp_voice", "btn_rp_finish", "btn_rp_next"
+    ]
+    for k in keys:
+        assert k in ru, f"Missing key {k} in ru.json"
+        assert k in en, f"Missing key {k} in en.json"
+
+    from database.db import ACHIEVEMENTS_REGISTRY
+    assert "roleplay_master" in ACHIEVEMENTS_REGISTRY
+
 
 
 
