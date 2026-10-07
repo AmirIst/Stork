@@ -154,6 +154,7 @@ async def handle_sprechen_voice_submission(message: Message, state: FSMContext):
 
         await db.increment_exam_quota(user_id)
         await db.update_daily_streak(user_id)
+        await db.unlock_achievement(user_id, "exam_speaker")
 
         await eval_status.edit_text(
             review,
@@ -197,6 +198,7 @@ async def handle_sprechen_text_submission(message: Message, state: FSMContext):
 
     await db.increment_exam_quota(user_id)
     await db.update_daily_streak(user_id)
+    await db.unlock_achievement(user_id, "exam_speaker")
 
     await eval_status.edit_text(
         review,

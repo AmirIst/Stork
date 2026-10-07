@@ -51,6 +51,7 @@ async def cb_check_verb_answer(callback: CallbackQuery, state: FSMContext):
     if is_correct:
         score, streak = await db.add_user_score(callback.from_user.id, points=1)
         header = f"{i18n.get('verbs_sprint_correct', lang)} 🔥 {streak}"
+        await db.unlock_achievement(callback.from_user.id, "verbs_sprinter")
     else:
         await db.reset_streak(callback.from_user.id)
         header = i18n.get("verbs_sprint_wrong", lang, correct=correct_ans)

@@ -119,6 +119,7 @@ async def cb_answer_placement_question(callback: CallbackQuery, state: FSMContex
         
         # Сохраняем в базу данных
         await db.save_user_placement_result(callback.from_user.id, result_level, total_score)
+        await db.unlock_achievement(callback.from_user.id, "placement_certified")
 
         percent = int((total_score / len(PLACEMENT_QUESTIONS)) * 100)
         desc = get_level_description(result_level, lang=lang)

@@ -104,6 +104,13 @@
 
   "btn_exam_sprechen": "🎙️ Oral Exam Simulator (Sprechen)",
   "sprechen_welcome": "🎙️🪶 *Goethe & Telc Oral Speaking Simulator*\n\nPractice speaking for official exams at levels *A1, A2, and B1*.\n\nStork will evaluate:\n• 📊 Official exam criteria scoring (out of 100)\n• 🗣️ Pronunciation, rhythm, and fluency\n• 🔍 Word order, verb conjugations, and cases\n• 🌟 Provide a certified model response (*Musterantwort*) with examiner audio!\n\nSelect your target level:",
-  "sprechen_evaluating": "🪶 Stork examiner is listening and assessing your spoken answer..."
+  "sprechen_evaluating": "🪶 Stork examiner is listening and assessing your spoken answer...",
+
+  "btn_achievements": "🏆 My Achievements",
+  "btn_back_to_stats": "📊 Back to Progress",
+  "achievements_title": "🏆 *Your Achievements & Trophies ({unlocked} of {total})*\n\nStudy daily to unlock the entire collection of feather badges!",
+  "achievements_unlocked_header": "🌟 *Unlocked Badges:*",
+  "achievements_locked_header": "🔒 *Next Goals:*",
+  "achievement_unlocked_toast": "🎉 *New Achievement Unlocked!*\n\n{icon} *{title}*\n_{desc}_"
 }
 

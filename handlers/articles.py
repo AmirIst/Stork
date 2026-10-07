@@ -75,6 +75,7 @@ async def cb_check_article(callback: CallbackQuery):
         result_header = i18n.get("article_wrong", lang, correct_article=word_data["article"])
 
     await db.update_daily_streak(callback.from_user.id)
+    await db.check_and_grant_achievements(callback.from_user.id)
 
     details = i18n.get(
         "article_card_detail",

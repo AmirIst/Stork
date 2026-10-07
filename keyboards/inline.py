@@ -231,13 +231,22 @@ def get_back_to_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 def get_stats_keyboard(lang: str = "ru", notifications_enabled: bool = True) -> InlineKeyboardMarkup:
     """Клавиатура экрана статистики с кнопками управления профилем и напоминаниями"""
     test_btn_text = "🎓 Пройти тест на уровень" if lang == "ru" else "🎓 Take Level Placement Test"
+    achieve_btn_text = i18n.get("btn_achievements", lang)
     notif_btn_text = i18n.get("btn_toggle_reminders_on" if notifications_enabled else "btn_toggle_reminders_off", lang)
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=achieve_btn_text, callback_data="menu_achievements")],
         [InlineKeyboardButton(text=test_btn_text, callback_data="menu_placement")],
         [
             InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium"),
             InlineKeyboardButton(text=notif_btn_text, callback_data="toggle_notif")
         ],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_achievements_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура витрины достижений"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_back_to_stats", lang), callback_data="menu_stats")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 

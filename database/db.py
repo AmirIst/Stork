@@ -85,6 +85,16 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_user ON ai_chat_history(user_id);")
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS user_achievements (
+            user_id INTEGER NOT NULL,
+            badge_id TEXT NOT NULL,
+            unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(user_id, badge_id)
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_achieve_user ON user_achievements(user_id);")
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -736,6 +746,161 @@ async def get_words_for_review(user_id: int, lang: str = "ru", limit: int = 20) 
         async with db.execute(query, (lang, user_id, limit)) as cursor:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+# ==========================================
+# СИСТЕМА ДОСТИЖЕНИЙ И НАГРАД (ACHIEVEMENTS)
+# ==========================================
+
+ACHIEVEMENTS_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "first_step": {
+        "icon": "🐣",
+        "title": {"ru": "Первый шаг", "en": "First Step"},
+        "desc": {"ru": "Запустить бота и начать изучение немецкого", "en": "Start the bot and begin learning German"}
+    },
+    "streak_3": {
+        "icon": "🔥",
+        "title": {"ru": "Огненный старт", "en": "Flame Starter"},
+        "desc": {"ru": "Серия занятий 3 дня подряд", "en": "3-day study streak"}
+    },
+    "streak_7": {
+        "icon": "⚡",
+        "title": {"ru": "Неудержимый", "en": "Unstoppable"},
+        "desc": {"ru": "Серия занятий 7 дней подряд", "en": "7-day study streak"}
+    },
+    "streak_30": {
+        "icon": "👑",
+        "title": {"ru": "Легенда привычки", "en": "Habit Legend"},
+        "desc": {"ru": "Серия занятий 30 дней подряд", "en": "30-day study streak"}
+    },
+    "words_10": {
+        "icon": "📖",
+        "title": {"ru": "Первые слова", "en": "First Words"},
+        "desc": {"ru": "Выучить 10 немецких слов", "en": "Learn 10 German words"}
+    },
+    "words_50": {
+        "icon": "📚",
+        "title": {"ru": "Книголюб", "en": "Word Collector"},
+        "desc": {"ru": "Выучить 50 немецких слов", "en": "Learn 50 German words"}
+    },
+    "words_100": {
+        "icon": "🧠",
+        "title": {"ru": "Золотой словарь", "en": "Golden Vocabulary"},
+        "desc": {"ru": "Выучить 100 немецких слов", "en": "Learn 100 German words"}
+    },
+    "articles_master": {
+        "icon": "🎯",
+        "title": {"ru": "Снайпер артиклей", "en": "Article Sniper"},
+        "desc": {"ru": "Набрать 20 очков в тренажере der, die, das", "en": "Score 20 points in der/die/das trainer"}
+    },
+    "verbs_sprinter": {
+        "icon": "⚡",
+        "title": {"ru": "Мастер глаголов", "en": "Verb Master"},
+        "desc": {"ru": "Успешно ответить в спринте глаголов и предлогов", "en": "Answer correctly in Verbs Sprint"}
+    },
+    "exam_writer": {
+        "icon": "✍️",
+        "title": {"ru": "Экзаменатор Schreiben", "en": "Schreiben Examiner"},
+        "desc": {"ru": "Отправить письменную работу на проверку", "en": "Submit a letter for exam review"}
+    },
+    "exam_speaker": {
+        "icon": "🎙️",
+        "title": {"ru": "Оратор Sprechen", "en": "Sprechen Speaker"},
+        "desc": {"ru": "Сдать устную часть экзамена голосовым сообщением", "en": "Complete oral exam part via voice"}
+    },
+    "placement_certified": {
+        "icon": "🎓",
+        "title": {"ru": "Сертификат CEFR", "en": "CEFR Certified"},
+        "desc": {"ru": "Пройти тест и подтвердить свой уровень языка", "en": "Complete placement test to determine CEFR level"}
+    }
+}
+
+async def unlock_achievement(user_id: int, badge_id: str) -> Optional[Dict[str, Any]]:
+    """Разблокировать достижение для пользователя, если еще не открыто. Возвращает метаданные ачивки при новом открытии."""
+    if badge_id not in ACHIEVEMENTS_REGISTRY:
+        return None
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            async with db.execute(
+                "SELECT 1 FROM user_achievements WHERE user_id = ? AND badge_id = ?",
+                (user_id, badge_id)
+            ) as cursor:
+                if await cursor.fetchone():
+                    return None
+            await db.execute(
+                "INSERT OR IGNORE INTO user_achievements (user_id, badge_id) VALUES (?, ?)",
+                (user_id, badge_id)
+            )
+            await db.commit()
+            ach = ACHIEVEMENTS_REGISTRY[badge_id].copy()
+            ach["id"] = badge_id
+            return ach
+        except Exception as e:
+            logger.error(f"Error unlocking achievement {badge_id} for user {user_id}: {e}")
+            return None
+
+async def get_user_unlocked_achievements(user_id: int) -> List[Dict[str, Any]]:
+    """Получить список всех открытых достижений пользователя с датой получения"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT badge_id, unlocked_at FROM user_achievements WHERE user_id = ? ORDER BY unlocked_at ASC",
+            (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            results = []
+            for r in rows:
+                b_id = r["badge_id"]
+                if b_id in ACHIEVEMENTS_REGISTRY:
+                    item = ACHIEVEMENTS_REGISTRY[b_id].copy()
+                    item["id"] = b_id
+                    item["unlocked_at"] = r["unlocked_at"]
+                    results.append(item)
+            return results
+
+async def check_and_grant_achievements(user_id: int) -> List[Dict[str, Any]]:
+    """Проверить критерии прогресса пользователя и выдать заработанные ачивки"""
+    newly_unlocked = []
+    
+    # 1. Всегда выдаем первый шаг
+    a = await unlock_achievement(user_id, "first_step")
+    if a:
+        newly_unlocked.append(a)
+
+    stats = await get_user_stats(user_id)
+    streak = stats.get("streak", 0)
+    score = stats.get("score", 0)
+    known = stats.get("known_words", 0)
+    placement = stats.get("placement_level")
+
+    if streak >= 3:
+        a = await unlock_achievement(user_id, "streak_3")
+        if a: newly_unlocked.append(a)
+    if streak >= 7:
+        a = await unlock_achievement(user_id, "streak_7")
+        if a: newly_unlocked.append(a)
+    if streak >= 30:
+        a = await unlock_achievement(user_id, "streak_30")
+        if a: newly_unlocked.append(a)
+
+    if known >= 10:
+        a = await unlock_achievement(user_id, "words_10")
+        if a: newly_unlocked.append(a)
+    if known >= 50:
+        a = await unlock_achievement(user_id, "words_50")
+        if a: newly_unlocked.append(a)
+    if known >= 100:
+        a = await unlock_achievement(user_id, "words_100")
+        if a: newly_unlocked.append(a)
+
+    if score >= 20:
+        a = await unlock_achievement(user_id, "articles_master")
+        if a: newly_unlocked.append(a)
+
+    if placement:
+        a = await unlock_achievement(user_id, "placement_certified")
+        if a: newly_unlocked.append(a)
+
+    return newly_unlocked
 
 
 

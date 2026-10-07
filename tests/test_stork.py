@@ -402,6 +402,62 @@ async def test_db_smart_review():
     assert len(words_to_rev) == 1
     assert words_to_rev[0]["id"] == word["id"]
 
+def test_achievements_locales_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    keys = [
+        "btn_achievements", "btn_back_to_stats", "achievements_title",
+        "achievements_unlocked_header", "achievements_locked_header", "achievement_unlocked_toast"
+    ]
+    for k in keys:
+        assert k in ru, f"Missing key {k} in ru.json"
+        assert k in en, f"Missing key {k} in en.json"
+
+def test_achievements_registry_integrity():
+    from database.db import ACHIEVEMENTS_REGISTRY
+    assert len(ACHIEVEMENTS_REGISTRY) >= 10
+    for b_id, meta in ACHIEVEMENTS_REGISTRY.items():
+        assert meta["icon"]
+        assert "ru" in meta["title"] and "en" in meta["title"]
+        assert "ru" in meta["desc"] and "en" in meta["desc"]
+
+@pytest.mark.anyio
+async def test_db_achievements_unlock_and_grant():
+    from database import db
+    import random
+    await db.init_db()
+
+    test_uid = random.randint(100000000, 999999999)
+    await db.get_or_create_user(test_uid, "achieve_test", "Achiever")
+
+    # 1. Первый шаг выдается автоматически
+    newly = await db.check_and_grant_achievements(test_uid)
+    assert any(a["id"] == "first_step" for a in newly)
+
+    # 2. Повторная проверка не дублирует ачивки
+    newly_again = await db.check_and_grant_achievements(test_uid)
+    assert len(newly_again) == 0
+
+    # 3. Ручное открытие
+    granted = await db.unlock_achievement(test_uid, "verbs_sprinter")
+    assert granted is not None
+    assert granted["id"] == "verbs_sprinter"
+
+    # Повторное ручное открытие возвращает None
+    granted_dup = await db.unlock_achievement(test_uid, "verbs_sprinter")
+    assert granted_dup is None
+
+    # 4. Проверка получения списка
+    unlocked = await db.get_user_unlocked_achievements(test_uid)
+    unlocked_ids = [a["id"] for a in unlocked]
+    assert "first_step" in unlocked_ids
+    assert "verbs_sprinter" in unlocked_ids
+
 
 
 

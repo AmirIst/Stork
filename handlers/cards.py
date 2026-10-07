@@ -144,6 +144,7 @@ async def cb_rate_card(callback: CallbackQuery):
 
     await db.set_word_status(callback.from_user.id, word_id, status)
     await db.update_daily_streak(callback.from_user.id)
+    await db.check_and_grant_achievements(callback.from_user.id)
     lang = await db.get_user_lang(callback.from_user.id)
     word_data = await db.get_word_by_id(word_id, lang=lang)
 

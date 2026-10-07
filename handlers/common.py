@@ -11,6 +11,7 @@ from keyboards.inline import (
     get_language_keyboard,
     get_back_to_menu_keyboard,
     get_stats_keyboard,
+    get_achievements_keyboard,
     get_training_hub_keyboard,
     get_vocab_hub_keyboard,
     get_exams_hub_keyboard,
@@ -186,12 +187,71 @@ async def cb_menu_stats(callback: CallbackQuery):
             f"🔔 *Streak reminders:* {'Enabled' if notif_enabled else 'Disabled'}"
         )
 
-    full_stats_text = f"{text}{level_info}{quota_info}"
+    # Проверяем и выдаем новые достижения
+    user_id = callback.from_user.id
+    await db.check_and_grant_achievements(user_id)
+    unlocked = await db.get_user_unlocked_achievements(user_id)
+    total_badges = len(db.ACHIEVEMENTS_REGISTRY)
+    badges_icons = " ".join([a["icon"] for a in unlocked]) if unlocked else "🐣"
+
+    if lang == "ru":
+        achieve_info = f"\n\n🏆 *Достижения ({len(unlocked)} из {total_badges}):* {badges_icons}"
+    else:
+        achieve_info = f"\n\n🏆 *Achievements ({len(unlocked)} of {total_badges}):* {badges_icons}"
+
+    full_stats_text = f"{text}{level_info}{achieve_info}{quota_info}"
     
     await show_or_update_window(
         callback,
         full_stats_text,
         reply_markup=get_stats_keyboard(lang, notifications_enabled=notif_enabled),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "menu_achievements")
+async def cb_menu_achievements(callback: CallbackQuery):
+    """Витрина достижений и наград"""
+    user_id = callback.from_user.id
+    lang = await db.get_user_lang(user_id)
+    await db.check_and_grant_achievements(user_id)
+    unlocked = await db.get_user_unlocked_achievements(user_id)
+    unlocked_ids = {a["id"] for a in unlocked}
+    total = len(db.ACHIEVEMENTS_REGISTRY)
+
+    title = i18n.get("achievements_title", lang, unlocked=len(unlocked), total=total)
+
+    # Список открытых наград
+    unlocked_lines = []
+    for a in unlocked:
+        t = a["title"].get(lang, a["title"]["ru"])
+        d = a["desc"].get(lang, a["desc"]["ru"])
+        date_str = a.get("unlocked_at", "")[:10]
+        date_suffix = f" _({date_str})_" if date_str else ""
+        unlocked_lines.append(f"• {a['icon']} *{t}*{date_suffix}\n  _{d}_")
+
+    # Список следующих целей (закрытые)
+    locked_lines = []
+    for b_id, a in db.ACHIEVEMENTS_REGISTRY.items():
+        if b_id not in unlocked_ids:
+            t = a["title"].get(lang, a["title"]["ru"])
+            d = a["desc"].get(lang, a["desc"]["ru"])
+            locked_lines.append(f"• 🔒 {a['icon']} *{t}*\n  _{d}_")
+
+    sec_unlocked = i18n.get("achievements_unlocked_header", lang)
+    sec_locked = i18n.get("achievements_locked_header", lang)
+
+    parts = [title]
+    if unlocked_lines:
+        parts.append(f"\n{sec_unlocked}\n" + "\n".join(unlocked_lines))
+    if locked_lines:
+        parts.append(f"\n{sec_locked}\n" + "\n".join(locked_lines))
+
+    full_text = "\n".join(parts)
+    await show_or_update_window(
+        callback,
+        full_text,
+        reply_markup=get_achievements_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()

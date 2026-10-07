@@ -144,6 +144,7 @@ async def handle_exam_text_submission(message: Message, state: FSMContext):
     # Учитываем проверку и обновляем серию занятий
     await db.increment_exam_quota(user_id)
     await db.update_daily_streak(user_id)
+    await db.unlock_achievement(user_id, "exam_writer")
 
     await eval_status.edit_text(
         review,
@@ -204,6 +205,7 @@ async def handle_exam_voice_submission(message: Message, state: FSMContext):
         # Учитываем проверку и обновляем серию занятий
         await db.increment_exam_quota(user_id)
         await db.update_daily_streak(user_id)
+        await db.unlock_achievement(user_id, "exam_writer")
 
         await eval_status.edit_text(
             review,
