@@ -45,7 +45,8 @@ async def init_db():
             last_usage_date TEXT DEFAULT '',
             notifications_enabled INTEGER DEFAULT 1,
             last_streak_date TEXT DEFAULT '',
-            last_reminder_date TEXT DEFAULT ''
+            last_reminder_date TEXT DEFAULT '',
+            lang_selected INTEGER DEFAULT 0
         );
         """)
 
@@ -159,6 +160,8 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN last_streak_date TEXT DEFAULT ''")
             if "last_reminder_date" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN last_reminder_date TEXT DEFAULT ''")
+            if "lang_selected" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN lang_selected INTEGER DEFAULT 0")
 
         # Миграция: проверяем наличие столбца status в user_progress
         async with db.execute("PRAGMA table_info(user_progress)") as cursor:
@@ -212,7 +215,7 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
                 return res
 
         await db.execute(
-            "INSERT INTO users (user_id, username, first_name, native_lang, selected_level, selected_category) VALUES (?, ?, ?, ?, 'ALL', 'ALL')",
+            "INSERT INTO users (user_id, username, first_name, native_lang, selected_level, selected_category, lang_selected) VALUES (?, ?, ?, ?, 'ALL', 'ALL', 0)",
             (user_id, username or "", first_name or "", DEFAULT_LANGUAGE)
         )
         await db.commit()
@@ -226,6 +229,7 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
             "score": 0,
             "streak": 0,
             "trial_used": 0,
+            "lang_selected": 0,
             "is_new": True
         }
 
@@ -233,8 +237,17 @@ async def update_user_lang(user_id: int, lang: str):
     """Обновить язык интерфейса пользователя"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "UPDATE users SET native_lang = ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
+            "UPDATE users SET native_lang = ?, lang_selected = 1, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
             (lang, user_id)
+        )
+        await db.commit()
+
+async def set_user_lang_selected(user_id: int, selected: bool = True):
+    """Отметить, что пользователь прошел выбор языка"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET lang_selected = ? WHERE user_id = ?",
+            (1 if selected else 0, user_id)
         )
         await db.commit()
 

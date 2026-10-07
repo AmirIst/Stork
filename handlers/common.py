@@ -1,7 +1,8 @@
+import os
 import logging
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 
 from database import db
@@ -9,6 +10,7 @@ from locales.manager import i18n
 from keyboards.inline import (
     get_main_menu_keyboard,
     get_language_keyboard,
+    get_onboarding_language_keyboard,
     get_back_to_menu_keyboard,
     get_stats_keyboard,
     get_achievements_keyboard,
@@ -78,8 +80,70 @@ async def cmd_start(message: Message, state: FSMContext):
         except ValueError:
             pass
 
+    lang_selected = bool(user.get("lang_selected", 0))
+
+    if not lang_selected:
+        intro_caption = (
+            "👋 *Welcome to Stork!* 🇩🇪🪶\n"
+            "Your AI mentor for learning German.\n\n"
+            "👋 *Добро пожаловать в Stork!* 🇩🇪🪶\n"
+            "Твой ИИ-наставник для изучения немецкого языка.\n\n"
+            "🌐 *Please select your language / Пожалуйста, выбери язык:*"
+        )
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logo.jpg")
+        kb = get_onboarding_language_keyboard()
+        if os.path.exists(logo_path):
+            await message.answer_photo(
+                photo=FSInputFile(logo_path),
+                caption=intro_caption,
+                reply_markup=kb,
+                parse_mode="Markdown"
+            )
+        else:
+            await message.answer(
+                text=intro_caption,
+                reply_markup=kb,
+                parse_mode="Markdown"
+            )
+        return
+
     text = i18n.get("welcome", lang, name=message.from_user.first_name or "Freund")
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("onboarding_lang:"))
+async def cb_onboarding_lang(callback: CallbackQuery, state: FSMContext):
+    """Первоначальный выбор языка новым пользователем при первом входе"""
+    await state.clear()
+    selected_lang = callback.data.split(":")[1]
+    if selected_lang not in ("en", "ru"):
+        selected_lang = "en"
+
+    await db.update_user_lang(callback.from_user.id, selected_lang)
+    await db.set_user_lang_selected(callback.from_user.id, True)
+
+    welcome_text = i18n.get("welcome", selected_lang, name=callback.from_user.first_name or "Freund")
+    kb = get_main_menu_keyboard(selected_lang)
+
+    try:
+        if getattr(callback.message, "photo", None):
+            await callback.message.edit_caption(
+                caption=welcome_text,
+                reply_markup=kb,
+                parse_mode="Markdown"
+            )
+        else:
+            await callback.message.edit_text(
+                text=welcome_text,
+                reply_markup=kb,
+                parse_mode="Markdown"
+            )
+    except Exception:
+        await callback.message.answer(
+            text=welcome_text,
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
+    await callback.answer()
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext):

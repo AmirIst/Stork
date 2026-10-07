@@ -14,6 +14,15 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"set_lang:{code}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+def get_onboarding_language_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура первого выбора языка при онбординге нового пользователя"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="onboarding_lang:en"),
+            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="onboarding_lang:ru")
+        ]
+    ])
+
 def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Главное меню бота Stork: компактное, интуитивное и удобное"""
     return InlineKeyboardMarkup(inline_keyboard=[

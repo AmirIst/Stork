@@ -41,7 +41,9 @@ async def show_or_update_window(
     - В обычном режиме быстро и без мерцания редактирует сообщение на месте (edit_text).
     """
     user_id = callback.from_user.id
-    need_repost = force_repost or has_voice_pending(user_id)
+    photo_attr = getattr(callback.message, "photo", None)
+    has_photo = isinstance(photo_attr, list) and len(photo_attr) > 0
+    need_repost = force_repost or has_voice_pending(user_id) or has_photo
 
     if need_repost:
         clear_voice_pending(user_id)

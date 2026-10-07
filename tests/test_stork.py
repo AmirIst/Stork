@@ -761,6 +761,96 @@ async def test_lifetime_vip_config_and_db():
     is_p_revoked, _ = await db.is_user_premium(test_db_uid)
     assert is_p_revoked is False
 
+@pytest.mark.anyio
+async def test_onboarding_language_flow():
+    """Тест первичного онбординга с выбором языка и фото/интро"""
+    from unittest.mock import AsyncMock, MagicMock
+    from keyboards.inline import get_onboarding_language_keyboard
+    from handlers.common import cmd_start, cb_onboarding_lang
+    from database import db
+    import aiosqlite
+
+    # 1. Проверяем клавиатуру онбординга
+    kb = get_onboarding_language_keyboard()
+    callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "onboarding_lang:en" in callbacks
+    assert "onboarding_lang:ru" in callbacks
+
+    # 2. Создаем нового пользователя
+    test_user_id = 888777123
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_user_id,))
+        await conn.commit()
+
+    u = await db.get_or_create_user(test_user_id, "onboard_tester", "Alex")
+    assert u.get("lang_selected") == 0
+
+    # 3. Запуск /start для нового пользователя -> должен показать интро и выбор языка
+    msg = MagicMock()
+    msg.from_user.id = test_user_id
+    msg.from_user.username = "onboard_tester"
+    msg.from_user.first_name = "Alex"
+    msg.text = "/start"
+    msg.bot = MagicMock()
+    msg.answer_photo = AsyncMock()
+    msg.answer = AsyncMock()
+    state = AsyncMock()
+
+    await cmd_start(msg, state)
+
+    # Проверяем, что отправлено приветствие с выбором языка (фото или текст)
+    if msg.answer_photo.called:
+        args, kwargs = msg.answer_photo.call_args
+        caption = kwargs.get("caption", "")
+        reply_kb = kwargs.get("reply_markup")
+    else:
+        assert msg.answer.called
+        args, kwargs = msg.answer.call_args
+        caption = kwargs.get("text", "")
+        reply_kb = kwargs.get("reply_markup")
+
+    assert "Welcome to Stork!" in caption
+    assert "Добро пожаловать в Stork!" in caption
+    assert "Please select your language" in caption
+    onboard_callbacks = [btn.callback_data for row in reply_kb.inline_keyboard for btn in row]
+    assert "onboarding_lang:en" in onboard_callbacks
+
+    # 4. Пользователь выбирает English
+    cb = MagicMock()
+    cb.from_user.id = test_user_id
+    cb.from_user.first_name = "Alex"
+    cb.data = "onboarding_lang:en"
+    cb.message = MagicMock()
+    cb.message.photo = [MagicMock()] # имитируем сообщение с фото
+    cb.message.edit_caption = AsyncMock()
+    cb.message.edit_text = AsyncMock()
+    cb.message.answer = AsyncMock()
+    cb.answer = AsyncMock()
+
+    await cb_onboarding_lang(cb, state)
+
+    # Проверяем, что язык сохранился
+    lang_after = await db.get_user_lang(test_user_id)
+    assert lang_after == "en"
+
+    # Проверяем, что отредактирован caption с английским приветствием
+    cb.message.edit_caption.assert_called_once()
+    caption_call = cb.message.edit_caption.call_args[1]["caption"]
+    assert "Hello, Alex! I am Stork" in caption_call
+    cb.answer.assert_called_once()
+
+    # 5. Повторный вызов /start для вернувшегося пользователя
+    msg.answer_photo.reset_mock()
+    msg.answer.reset_mock()
+    await cmd_start(msg, state)
+
+    # Уже не должен показывать интро с выбором языка, а сразу выдать главное меню на English
+    msg.answer_photo.assert_not_called()
+    msg.answer.assert_called_once()
+    returning_text = msg.answer.call_args[1].get("text") if "text" in msg.answer.call_args[1] else msg.answer.call_args[0][0]
+    assert "Hello, Alex! I am Stork" in returning_text
+
+
 
 
 
