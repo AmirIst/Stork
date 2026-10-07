@@ -23,6 +23,15 @@ def get_onboarding_language_keyboard() -> InlineKeyboardMarkup:
         ]
     ])
 
+def get_onboarding_welcome_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после выбора языка: предложить пройти тест или войти в главное меню"""
+    test_btn = "🎓 Пройти тест на уровень (~2 мин)" if lang == "ru" else "🎓 Take Level Test (~2 min)"
+    menu_btn = i18n.get("btn_main_menu", lang)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=test_btn, callback_data="placement_start")],
+        [InlineKeyboardButton(text=menu_btn, callback_data="back_to_menu")]
+    ])
+
 def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Главное меню бота Stork: компактное, интуитивное и удобное"""
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -352,12 +361,16 @@ def get_ai_dialog_welcome_keyboard(lang: str = "ru", has_history: bool = False) 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_ai_in_chat_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """Клавиатура под ответом ИИ: озвучить немецкую часть, очистить контекст или выйти в меню"""
+    """Клавиатура под ответом ИИ: озвучить немецкую часть, завершить сессию, очистить контекст или выйти в меню"""
     voice_text = "🔊 Озвучить по-немецки" if lang == "ru" else "🔊 Listen in German"
+    finish_text = "🏁 Завершить сессию" if lang == "ru" else "🏁 Finish session"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=voice_text, callback_data="ai_voice_last")],
         [
-            InlineKeyboardButton(text="🔄 Очистить чат" if lang == "ru" else "🔄 Clear chat", callback_data="ai_clear"),
+            InlineKeyboardButton(text=finish_text, callback_data="ai_finish"),
+            InlineKeyboardButton(text="🔄 Очистить" if lang == "ru" else "🔄 Clear", callback_data="ai_clear")
+        ],
+        [
             InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")
         ]
     ])

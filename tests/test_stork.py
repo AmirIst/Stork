@@ -833,10 +833,14 @@ async def test_onboarding_language_flow():
     lang_after = await db.get_user_lang(test_user_id)
     assert lang_after == "en"
 
-    # Проверяем, что отредактирован caption с английским приветствием
+    # Проверяем, что отредактирован caption с предложением пройти тест
     cb.message.edit_caption.assert_called_once()
     caption_call = cb.message.edit_caption.call_args[1]["caption"]
-    assert "Hello, Alex! I am Stork" in caption_call
+    assert "Welcome, Alex! I am Stork" in caption_call
+    onboard_reply_kb = cb.message.edit_caption.call_args[1]["reply_markup"]
+    btn_callbacks = [btn.callback_data for row in onboard_reply_kb.inline_keyboard for btn in row]
+    assert "placement_start" in btn_callbacks
+    assert "back_to_menu" in btn_callbacks
     cb.answer.assert_called_once()
 
     # 5. Повторный вызов /start для вернувшегося пользователя
@@ -849,6 +853,86 @@ async def test_onboarding_language_flow():
     msg.answer.assert_called_once()
     returning_text = msg.answer.call_args[1].get("text") if "text" in msg.answer.call_args[1] else msg.answer.call_args[0][0]
     assert "Hello, Alex! I am Stork" in returning_text
+
+def test_placement_pool_and_session():
+    """Тест пула из 60 вопросов и генерации случайной сессии из 20 вопросов"""
+    from services.placement_test import PLACEMENT_QUESTION_POOL, generate_placement_session, get_question_by_id
+
+    # 1. Проверяем пул из 60 вопросов
+    assert len(PLACEMENT_QUESTION_POOL) == 60
+    a1_qs = [q for q in PLACEMENT_QUESTION_POOL if q["level"] == "A1"]
+    a2_qs = [q for q in PLACEMENT_QUESTION_POOL if q["level"] == "A2"]
+    b1_qs = [q for q in PLACEMENT_QUESTION_POOL if q["level"] == "B1"]
+    assert len(a1_qs) == 20
+    assert len(a2_qs) == 20
+    assert len(b1_qs) == 20
+
+    # 2. Генерируем 20 вопросов для сессии
+    session = generate_placement_session(count=20, a1_count=7, a2_count=7, b1_count=6)
+    assert len(session) == 20
+    unique_ids = {q["id"] for q in session}
+    assert len(unique_ids) == 20  # Все вопросы в рамках сессии уникальны!
+
+    # Проверяем структуру: 7 A1, затем 7 A2, затем 6 B1
+    assert [q["level"] for q in session[:7]] == ["A1"] * 7
+    assert [q["level"] for q in session[7:14]] == ["A2"] * 7
+    assert [q["level"] for q in session[14:]] == ["B1"] * 6
+
+    # 3. Проверяем get_question_by_id
+    q1 = get_question_by_id(1)
+    assert q1["id"] == 1
+    assert q1["level"] == "A1"
+
+def test_evaluate_20_question_placement():
+    """Тест оценки уровня для расширенной сессии из 20 вопросов"""
+    from services.placement_test import generate_placement_session, evaluate_placement_test
+
+    session = generate_placement_session(count=20)
+    session_q_ids = [q["id"] for q in session]
+
+    # Идеальный результат (20 из 20) -> B1
+    perfect_answers = [q["correct_index"] for q in session]
+    lvl, score, breakdown = evaluate_placement_test(perfect_answers, question_ids=session_q_ids)
+    assert lvl == "B1"
+    assert score == 20
+    assert breakdown["A1"] == (7, 7)
+    assert breakdown["A2"] == (7, 7)
+    assert breakdown["B1"] == (6, 6)
+
+    # 12 правильных ответов (60%) -> A2
+    mid_answers = [session[i]["correct_index"] if i < 12 else (session[i]["correct_index"] + 1) % 4 for i in range(20)]
+    lvl_mid, score_mid, _ = evaluate_placement_test(mid_answers, question_ids=session_q_ids)
+    assert lvl_mid == "A2"
+    assert score_mid == 12
+
+    # 5 правильных ответов (25%) -> A1
+    low_answers = [session[i]["correct_index"] if i < 5 else (session[i]["correct_index"] + 1) % 4 for i in range(20)]
+    lvl_low, score_low, _ = evaluate_placement_test(low_answers, question_ids=session_q_ids)
+    assert lvl_low == "A1"
+    assert score_low == 5
+
+def test_compress_chat_turn_for_context():
+    """Тест сжатия истории диалога для оптимизации токенов и ускорения ответа"""
+    from services.ai_tutor import compress_chat_turn_for_context
+
+    # 1. Длинный ответ модели с грамматическими разборами и заголовками
+    long_model_reply = """
+🇩🇪 Перевод фразы на немецком: Guten Morgen, wie geht es dir?
+💡 Полезный разбор: Слово Morgen с большой буквы, это существительное мужского рода der Morgen.
+💬 Ответ на сообщение: Mir geht es blendend, danke der Nachfrage! (У меня все отлично, спасибо что спросил!)
+❓ Встречный вопрос: Was hast du heute Schönes vor? (Что у тебя сегодня хорошего в планах?)
+"""
+    compressed = compress_chat_turn_for_context(long_model_reply, role="model")
+    assert "🇩🇪" in compressed
+    assert "💬" in compressed
+    assert "❓" in compressed
+    # Проверяем, что избыточный разбор отсечен для экономии контекста
+    assert "Полезный разбор" not in compressed
+
+    # 2. Длинное сообщение пользователя
+    very_long_user_msg = "Привет Аист! " * 50
+    user_compressed = compress_chat_turn_for_context(very_long_user_msg, role="user")
+    assert len(user_compressed) <= 250
 
 
 

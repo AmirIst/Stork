@@ -92,6 +92,37 @@ async def cb_ai_clear(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer("Диалог очищен!" if lang == "ru" else "Chat cleared!")
 
+@router.callback_query(F.data == "ai_finish")
+async def cb_ai_finish(callback: CallbackQuery, state: FSMContext):
+    """Завершение текущей разговорной сессии с фиксацией прогресса"""
+    await state.clear()
+    user_id = callback.from_user.id
+    lang = await db.get_user_lang(user_id)
+    stats = await db.get_user_stats(user_id)
+
+    if lang == "ru":
+        text = (
+            "🏁 *Разговорная практика завершена!*\n\n"
+            f"🔥 Твой текущий ударный режим (страйк): *{stats['streak']} дн.*\n"
+            "💬 Отличная работа! Все разобранные фразы и слова сохранены в твоем профиле.\n\n"
+            "Возвращайся к диалогу в любое время или закрепи лексику в карточках 👇"
+        )
+    else:
+        text = (
+            "🏁 *Speaking practice completed!*\n\n"
+            f"🔥 Your current streak: *{stats['streak']} days*\n"
+            "💬 Great job! All practiced vocabulary and insights are saved in your profile.\n\n"
+            "Resume your conversation anytime or reinforce vocabulary with flashcards 👇"
+        )
+
+    await show_or_update_window(
+        callback,
+        text,
+        reply_markup=get_ai_dialog_welcome_keyboard(lang, has_history=True),
+        parse_mode="Markdown"
+    )
+    await callback.answer("Сессия завершена!" if lang == "ru" else "Session finished!")
+
 @router.message(AIConversationState.in_conversation, F.text)
 async def handle_ai_message(message: Message, state: FSMContext):
     """Обработка текстовых реплик с сохранением контекста и минимальной задержкой"""

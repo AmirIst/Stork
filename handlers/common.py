@@ -11,6 +11,7 @@ from keyboards.inline import (
     get_main_menu_keyboard,
     get_language_keyboard,
     get_onboarding_language_keyboard,
+    get_onboarding_welcome_keyboard,
     get_back_to_menu_keyboard,
     get_stats_keyboard,
     get_achievements_keyboard,
@@ -121,8 +122,22 @@ async def cb_onboarding_lang(callback: CallbackQuery, state: FSMContext):
     await db.update_user_lang(callback.from_user.id, selected_lang)
     await db.set_user_lang_selected(callback.from_user.id, True)
 
-    welcome_text = i18n.get("welcome", selected_lang, name=callback.from_user.first_name or "Freund")
-    kb = get_main_menu_keyboard(selected_lang)
+    welcome_name = callback.from_user.first_name or ("друг" if selected_lang == "ru" else "friend")
+    if selected_lang == "ru":
+        welcome_text = (
+            f"👋 *Привет, {welcome_name}! Я Stork (Аист)*: твой наставник по немецкому языку! 🇩🇪🪶\n\n"
+            "Чтобы подобрать для тебя правильные слова, упражнения и уровень сложности, "
+            "давай сначала определим твой текущий уровень в коротком тесте (~2 минуты).\n\n"
+            "Или ты можешь сразу перейти в главное меню 👇"
+        )
+    else:
+        welcome_text = (
+            f"👋 *Welcome, {welcome_name}! I am Stork*: your German tutor! 🇩🇪🪶\n\n"
+            "To personalize your learning path and recommend the right words and drills, "
+            "let's check your current level with a quick placement test (~2 minutes).\n\n"
+            "Or you can jump straight into the Main Menu below 👇"
+        )
+    kb = get_onboarding_welcome_keyboard(selected_lang)
 
     try:
         if getattr(callback.message, "photo", None):
