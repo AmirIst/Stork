@@ -415,14 +415,33 @@ def get_placement_question_keyboard(q_index: int, options: List[str], lang: str 
     buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")] )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def get_placement_result_keyboard(level: str, lang: str = "ru") -> InlineKeyboardMarkup:
-    """Клавиатура сертификата с кнопкой применения уровня"""
+def get_placement_result_keyboard(
+    level: str,
+    score: int = 0,
+    total: int = 20,
+    referral_link: str = "",
+    lang: str = "ru"
+) -> InlineKeyboardMarkup:
+    """Клавиатура сертификата с кнопкой поделиться результатом и применения уровня"""
+    buttons = []
+
+    if referral_link:
+        if lang == "ru":
+            share_text = f"🎓 Я только что сдал тест по немецкому в Stork на уровень {level} (результат {score}/{total})! 🇩🇪🪶 Проверь свой уровень немецкого:"
+            share_btn_text = "🚀 Поделиться результатом"
+        else:
+            share_text = f"🎓 I just tested my German with Stork and achieved Level {level} (score {score}/{total})! 🇩🇪🪶 Check your German level here:"
+            share_btn_text = "🚀 Share Certificate"
+
+        share_url = f"https://t.me/share/url?url={urllib.parse.quote(referral_link)}&text={urllib.parse.quote(share_text)}"
+        buttons.append([InlineKeyboardButton(text=share_btn_text, url=share_url)])
+
     apply_text = i18n.get("btn_apply_placement_level", lang, level=level)
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=apply_text, callback_data=f"set_lvl:{level}")],
-        [InlineKeyboardButton(text=i18n.get("btn_retake_placement", lang), callback_data="placement_start")],
-        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
-    ])
+    buttons.append([InlineKeyboardButton(text=apply_text, callback_data=f"set_lvl:{level}")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_retake_placement", lang), callback_data="placement_start")])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_verbs_sprint_keyboard(options: List[str], correct_answer: str, lang: str = "ru") -> InlineKeyboardMarkup:
     """Клавиатура вариантов ответа для спринта глаголов и предлогов"""

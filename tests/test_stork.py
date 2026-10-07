@@ -934,6 +934,28 @@ def test_compress_chat_turn_for_context():
     user_compressed = compress_chat_turn_for_context(very_long_user_msg, role="user")
     assert len(user_compressed) <= 250
 
+def test_placement_share_certificate_keyboard():
+    """Тест генерации кнопки поделиться сертификатом с реферальной ссылкой"""
+    from keyboards.inline import get_placement_result_keyboard
+
+    ref_link = "https://t.me/stork_bot?start=ref_999111"
+
+    # Русская локаль
+    kb_ru = get_placement_result_keyboard(level="A2", score=16, total=20, referral_link=ref_link, lang="ru")
+    first_btn = kb_ru.inline_keyboard[0][0]
+    assert "Поделиться" in first_btn.text
+    assert first_btn.url is not None
+    assert "t.me/share/url" in first_btn.url
+    assert "ref_999111" in first_btn.url
+    assert "A2" in first_btn.url
+
+    # Английская локаль
+    kb_en = get_placement_result_keyboard(level="B1", score=19, total=20, referral_link=ref_link, lang="en")
+    first_btn_en = kb_en.inline_keyboard[0][0]
+    assert "Share Certificate" in first_btn_en.text
+    assert first_btn_en.url is not None
+    assert "B1" in first_btn_en.url
+
 
 
 

@@ -166,10 +166,27 @@ async def cb_answer_placement_question(callback: CallbackQuery, state: FSMContex
                 f"👉 *Stork's Tip:* {desc['tip']}"
             )
 
+        bot_username = "stork_learn_german_bot"
+        if callback.bot:
+            try:
+                bot_info = await callback.bot.get_me()
+                bot_username = bot_info.username or bot_username
+            except Exception:
+                pass
+        ref_link = f"https://t.me/{bot_username}?start=ref_{callback.from_user.id}"
+
+        kb = get_placement_result_keyboard(
+            level=result_level,
+            score=total_score,
+            total=total_questions,
+            referral_link=ref_link,
+            lang=lang
+        )
+
         await show_or_update_window(
             callback,
             cert_text,
-            reply_markup=get_placement_result_keyboard(result_level, lang=lang),
+            reply_markup=kb,
             parse_mode="Markdown"
         )
         await callback.answer("Тест успешно завершен!" if lang == "ru" else "Test completed!")
