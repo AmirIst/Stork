@@ -82,6 +82,28 @@
   "reminder_text": "🪶 *Stork reminder:* Your streak is in danger! 🔥\n\nYou haven't practiced today yet. Review a few cards or practice articles to protect your streak (*{streak} days*)! 🇩🇪",
   "btn_quick_train": "🃏 Quick Practice",
   "reminder_toggled_on": "🔔 Daily streak reminders turned ON!",
-  "reminder_toggled_off": "🔕 Daily reminders turned OFF."
+  "reminder_toggled_off": "🔕 Daily reminders turned OFF.",
+
+  "btn_hub_training": "🏋️ Training",
+  "btn_hub_vocab": "📚 Vocabulary & Topics",
+  "btn_hub_exams": "🎓 Exams & Tests",
+  "btn_hub_settings": "⚙️ Settings",
+  "hub_training_title": "🏋️ *Training & Practice Hub*\n\nChoose an activity to practice your German:",
+  "hub_vocab_title": "📚 *Vocabulary & Flashcards*\n\nLearn new words or review previously saved vocabulary:",
+  "hub_exams_title": "🎓 *Exams & Level Testing*\n\nGoethe & Telc exam preparation (A1-B1) and level assessment:",
+  "hub_settings_title": "⚙️ *Stork Bot Settings*\n\nManage interface language and daily streak reminders:",
+
+  "btn_smart_review": "🔄 Smart Vocabulary Review",
+  "smart_review_empty": "🎉 *Awesome! No words due for review right now.*\n\nAll learned words are reinforced. Head to *Flashcards* to learn new vocabulary!",
+  "smart_review_title": "🔄 *Smart Review* (Due words: {count})\n\nHere are words you previously marked for review or learning:",
+
+  "btn_verbs_sprint": "⚡ Verbs & Prepositions Sprint",
+  "verbs_sprint_title": "⚡ *Verbs & Prepositions Sprint*\n\nChoose the correct option as fast as you can:",
+  "verbs_sprint_correct": "🎉 *Spot on!* (+1 point)",
+  "verbs_sprint_wrong": "❌ Incorrect. Correct answer: *{correct}*",
+
+  "btn_exam_sprechen": "🎙️ Oral Exam Simulator (Sprechen)",
+  "sprechen_welcome": "🎙️🪶 *Goethe & Telc Oral Speaking Simulator*\n\nPractice speaking for official exams at levels *A1, A2, and B1*.\n\nStork will evaluate:\n• 📊 Official exam criteria scoring (out of 100)\n• 🗣️ Pronunciation, rhythm, and fluency\n• 🔍 Word order, verb conjugations, and cases\n• 🌟 Provide a certified model response (*Musterantwort*) with examiner audio!\n\nSelect your target level:",
+  "sprechen_evaluating": "🪶 Stork examiner is listening and assessing your spoken answer..."
 }
 

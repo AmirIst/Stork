@@ -707,4 +707,35 @@ async def mark_user_reminded(user_id: int, today_date: str):
         await db.execute("UPDATE users SET last_reminder_date = ? WHERE user_id = ?", (today_date, user_id))
         await db.commit()
 
+async def get_review_words_count(user_id: int) -> int:
+    """Получить количество слов, требующих повторения (статусы learning или review)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM user_progress WHERE user_id = ? AND status IN ('learning', 'review')",
+            (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+async def get_words_for_review(user_id: int, lang: str = "ru", limit: int = 20) -> List[Dict[str, Any]]:
+    """Получить слова для умного повторения"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        query = """
+            SELECT w.id, w.word, w.article, w.plural, w.level, w.category, w.example_de,
+                   COALESCE(wt.translation, '') AS translation,
+                   COALESCE(wt.example_tr, '') AS example_tr,
+                   up.status, up.wrong_count, up.correct_count
+            FROM user_progress up
+            JOIN words w ON up.word_id = w.id
+            LEFT JOIN word_translations wt ON w.id = wt.word_id AND wt.lang = ?
+            WHERE up.user_id = ? AND up.status IN ('learning', 'review')
+            ORDER BY up.last_reviewed ASC, up.wrong_count DESC
+            LIMIT ?
+        """
+        async with db.execute(query, (lang, user_id, limit)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
 

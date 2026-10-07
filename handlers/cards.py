@@ -5,7 +5,8 @@ from database import db
 from locales.manager import i18n
 from keyboards.inline import (
     get_card_keyboard,
-    get_card_rated_keyboard
+    get_card_rated_keyboard,
+    get_back_to_menu_keyboard
 )
 from services.ui_helper import show_or_update_window
 
@@ -49,6 +50,44 @@ async def cb_menu_cards(callback: CallbackQuery):
     """Открытие карточек из главного меню"""
     lang = await db.get_user_lang(callback.from_user.id)
     await send_flashcard(callback, lang)
+    await callback.answer()
+
+@router.callback_query(F.data == "menu_smart_review")
+async def cb_menu_smart_review(callback: CallbackQuery):
+    """Режим умного повторения слов, в которых ученик ранее ошибался"""
+    lang = await db.get_user_lang(callback.from_user.id)
+    review_words = await db.get_words_for_review(callback.from_user.id, lang=lang, limit=10)
+    
+    if not review_words:
+        text = i18n.get("smart_review_empty", lang)
+        await show_or_update_window(callback, text, reply_markup=get_back_to_menu_keyboard(lang), parse_mode="Markdown")
+        await callback.answer()
+        return
+
+    # Берем первое слово из очереди на повторение
+    word_data = review_words[0]
+    plural_str = f"({word_data['plural']})" if word_data.get("plural") else ""
+    user_status = word_data.get("status")
+
+    status_badge = " [🔴 Учу]" if user_status == "learning" else " [🟡 Повторение]"
+    if lang != "ru":
+        status_badge = " [🔴 Learning]" if user_status == "learning" else " [🟡 Review]"
+
+    count_str = str(len(review_words))
+    header = i18n.get("smart_review_title", lang, count=count_str)
+
+    text = (
+        f"{header}\n\n"
+        f"🇩🇪 *{word_data['article']} {word_data['word']}* {plural_str}{status_badge}\n\n"
+        f"{i18n.get('card_prompt_recall', lang)}"
+    )
+
+    await show_or_update_window(
+        callback,
+        text,
+        reply_markup=get_card_keyboard(word_data["id"], lang=lang, is_revealed=False),
+        parse_mode="Markdown"
+    )
     await callback.answer()
 
 @router.callback_query(F.data == "next_card")

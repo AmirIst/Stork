@@ -10,7 +10,11 @@ from keyboards.inline import (
     get_main_menu_keyboard,
     get_language_keyboard,
     get_back_to_menu_keyboard,
-    get_stats_keyboard
+    get_stats_keyboard,
+    get_training_hub_keyboard,
+    get_vocab_hub_keyboard,
+    get_exams_hub_keyboard,
+    get_settings_hub_keyboard
 )
 from services.ui_helper import show_or_update_window
 
@@ -27,19 +31,17 @@ async def cmd_start(message: Message, state: FSMContext):
         first_name=message.from_user.first_name
     )
     lang = user["native_lang"]
-    level, category = await db.get_user_filters(message.from_user.id)
 
     text = i18n.get("welcome", lang, name=message.from_user.first_name or "Freund")
-    await message.answer(text, reply_markup=get_main_menu_keyboard(lang, level, category), parse_mode="Markdown")
+    await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="Markdown")
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext):
     """Команда /menu: возврат в главное меню"""
     await state.clear()
     lang = await db.get_user_lang(message.from_user.id)
-    level, category = await db.get_user_filters(message.from_user.id)
     text = i18n.get("menu_title", lang)
-    await message.answer(text, reply_markup=get_main_menu_keyboard(lang, level, category), parse_mode="Markdown")
+    await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="Markdown")
 
 @router.message(Command("lang"))
 async def cmd_language(message: Message):
@@ -53,9 +55,45 @@ async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню через Inline-кнопку"""
     await state.clear()
     lang = await db.get_user_lang(callback.from_user.id)
-    level, category = await db.get_user_filters(callback.from_user.id)
     text = i18n.get("menu_title", lang)
-    kb = get_main_menu_keyboard(lang, level, category)
+    kb = get_main_menu_keyboard(lang)
+    await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "hub_training")
+async def cb_hub_training(callback: CallbackQuery):
+    """Подменю: Раздел тренировок"""
+    lang = await db.get_user_lang(callback.from_user.id)
+    text = i18n.get("hub_training_title", lang)
+    await show_or_update_window(callback, text, reply_markup=get_training_hub_keyboard(lang), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "hub_vocab")
+async def cb_hub_vocab(callback: CallbackQuery):
+    """Подменю: Словарь и темы"""
+    lang = await db.get_user_lang(callback.from_user.id)
+    level, category = await db.get_user_filters(callback.from_user.id)
+    review_count = await db.get_review_words_count(callback.from_user.id)
+    text = i18n.get("hub_vocab_title", lang)
+    kb = get_vocab_hub_keyboard(lang, review_count=review_count, level=level, category=category)
+    await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "hub_exams")
+async def cb_hub_exams(callback: CallbackQuery):
+    """Подменю: Экзамены и тесты"""
+    lang = await db.get_user_lang(callback.from_user.id)
+    text = i18n.get("hub_exams_title", lang)
+    await show_or_update_window(callback, text, reply_markup=get_exams_hub_keyboard(lang), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "hub_settings")
+async def cb_hub_settings(callback: CallbackQuery):
+    """Подменю: Настройки"""
+    lang = await db.get_user_lang(callback.from_user.id)
+    notif_status = await db.get_user_notifications_status(callback.from_user.id)
+    text = i18n.get("hub_settings_title", lang)
+    kb = get_settings_hub_keyboard(lang, notifications_enabled=notif_status)
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
     await callback.answer()
 
@@ -81,7 +119,7 @@ async def cb_set_language(callback: CallbackQuery):
     await show_or_update_window(
         callback,
         full_text,
-        reply_markup=get_main_menu_keyboard(selected_lang, level, category),
+        reply_markup=get_main_menu_keyboard(selected_lang),
         parse_mode="Markdown"
     )
     await callback.answer()

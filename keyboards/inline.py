@@ -12,8 +12,37 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"set_lang:{code}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def get_main_menu_keyboard(lang: str = "ru", level: str = "ALL", category: str = "ALL") -> InlineKeyboardMarkup:
-    """Главное меню бота Stork с понятными кнопками без англицизмов"""
+def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Главное меню бота Stork: компактное, интуитивное и удобное"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=i18n.get("btn_hub_training", lang), callback_data="hub_training"),
+            InlineKeyboardButton(text=i18n.get("btn_hub_vocab", lang), callback_data="hub_vocab")
+        ],
+        [
+            InlineKeyboardButton(text=i18n.get("btn_hub_exams", lang), callback_data="hub_exams"),
+            InlineKeyboardButton(text=i18n.get("btn_ai_tutor", lang), callback_data="menu_ai")
+        ],
+        [
+            InlineKeyboardButton(text=i18n.get("btn_stats", lang), callback_data="menu_stats"),
+            InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium")
+        ],
+        [
+            InlineKeyboardButton(text=i18n.get("btn_hub_settings", lang), callback_data="hub_settings")
+        ]
+    ])
+
+def get_training_hub_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Подменю: Тренировка и практика"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_articles", lang), callback_data="menu_articles")],
+        [InlineKeyboardButton(text=i18n.get("btn_verbs_sprint", lang), callback_data="menu_verbs_sprint")],
+        [InlineKeyboardButton(text=i18n.get("btn_quiz", lang), callback_data="menu_quiz")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_vocab_hub_keyboard(lang: str = "ru", review_count: int = 0, level: str = "ALL", category: str = "ALL") -> InlineKeyboardMarkup:
+    """Подменю: Словарь, карточки и умное повторение"""
     level_label = "Все уровни" if level == "ALL" else level
     if lang != "ru" and level == "ALL":
         level_label = "All levels"
@@ -23,25 +52,35 @@ def get_main_menu_keyboard(lang: str = "ru", level: str = "ALL", category: str =
         cat_label = "All topics"
 
     if lang == "ru":
-        topics_btn_text = f"🎯 Темы и уровень: {level_label} • {cat_label}"
+        topics_btn_text = f"🎯 Темы и сложность: {level_label} • {cat_label}"
+        review_btn_text = f"🔄 Умное повторение ({review_count})" if review_count > 0 else "🔄 Умное повторение слов"
     else:
         topics_btn_text = f"🎯 Level & Topics: {level_label} • {cat_label}"
+        review_btn_text = f"🔄 Smart Review ({review_count})" if review_count > 0 else "🔄 Smart Vocabulary Review"
 
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=i18n.get("btn_articles", lang), callback_data="menu_articles")],
         [InlineKeyboardButton(text=i18n.get("btn_cards", lang), callback_data="menu_cards")],
-        [InlineKeyboardButton(text=i18n.get("btn_quiz", lang), callback_data="menu_quiz")],
-        [InlineKeyboardButton(text=i18n.get("btn_placement_test", lang), callback_data="menu_placement")],
-        [InlineKeyboardButton(text=i18n.get("btn_exam_trainer", lang), callback_data="menu_exam")],
-        [InlineKeyboardButton(text=i18n.get("btn_ai_tutor", lang), callback_data="menu_ai")],
+        [InlineKeyboardButton(text=review_btn_text, callback_data="menu_smart_review")],
         [InlineKeyboardButton(text=topics_btn_text, callback_data="open_filters")],
-        [
-            InlineKeyboardButton(text=i18n.get("btn_stats", lang), callback_data="menu_stats"),
-            InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium")
-        ],
-        [
-            InlineKeyboardButton(text=i18n.get("btn_settings", lang), callback_data="menu_lang")
-        ]
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_exams_hub_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Подменю: Экзамены и сертификация"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_trainer", lang), callback_data="menu_exam")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_sprechen", lang), callback_data="menu_sprechen")],
+        [InlineKeyboardButton(text=i18n.get("btn_placement_test", lang), callback_data="menu_placement")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_settings_hub_keyboard(lang: str = "ru", notifications_enabled: bool = True) -> InlineKeyboardMarkup:
+    """Подменю: Настройки"""
+    notif_btn_text = i18n.get("btn_toggle_reminders_on" if notifications_enabled else "btn_toggle_reminders_off", lang)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_settings", lang), callback_data="menu_lang")],
+        [InlineKeyboardButton(text=notif_btn_text, callback_data="toggle_notif")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 
 def get_filters_keyboard(current_level: str, current_category: str, lang: str = "ru") -> InlineKeyboardMarkup:
@@ -300,6 +339,49 @@ def get_placement_result_keyboard(level: str, lang: str = "ru") -> InlineKeyboar
         [InlineKeyboardButton(text=i18n.get("btn_retake_placement", lang), callback_data="placement_start")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
+
+def get_verbs_sprint_keyboard(options: List[str], correct_answer: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура вариантов ответа для спринта глаголов и предлогов"""
+    buttons = []
+    for opt in options:
+        is_cor = "1" if opt == correct_answer else "0"
+        btn_data = f"vs:{is_cor}:{opt[:18]}"
+        buttons.append([InlineKeyboardButton(text=opt, callback_data=btn_data)])
+    buttons.append([InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_next_verbs_sprint_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Кнопка перехода к следующему вопросу спринта глаголов"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_next", lang), callback_data="menu_verbs_sprint")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_sprechen_levels_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура выбора уровня для устного экзамена Sprechen"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_a1", lang), callback_data="spr_lvl:A1")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_a2", lang), callback_data="spr_lvl:A2")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_b1", lang), callback_data="spr_lvl:B1")],
+        [InlineKeyboardButton(text=i18n.get("btn_exam_lvl_random", lang), callback_data="spr_lvl:RANDOM")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_sprechen_task_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура при активном билете устного экзамена"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.get("btn_exam_new_task", lang), callback_data="spr_new_task")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_sprechen_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после оценки устного экзамена"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔊 Озвучить эталон (Musterantwort)" if lang == "ru" else "🔊 Listen to Model Answer", callback_data="spr_voice_sample")],
+        [InlineKeyboardButton(text="🎙️ Следующий билет" if lang == "ru" else "🎙️ Next Task", callback_data="menu_sprechen")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
 
 
 

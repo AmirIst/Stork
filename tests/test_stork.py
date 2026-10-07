@@ -258,10 +258,11 @@ def test_locales_premium_and_reminder_keys():
 
 @pytest.mark.anyio
 async def test_quota_and_premium_logic():
+    import random
     from database import db
     await db.init_db()
 
-    test_uid = 888777666
+    test_uid = random.randint(100000000, 999999999)
     # 1. Новый пользователь
     await db.get_or_create_user(test_uid, "test_user", "Tester")
 
@@ -295,10 +296,11 @@ async def test_quota_and_premium_logic():
 
 @pytest.mark.anyio
 async def test_daily_streak_and_notification_toggle():
+    import random
     from database import db
     await db.init_db()
 
-    test_uid = 555444333
+    test_uid = random.randint(100000000, 999999999)
     await db.get_or_create_user(test_uid, "streak_tester", "StreakUser")
 
     # Обновление серии занятий
@@ -313,6 +315,93 @@ async def test_daily_streak_and_notification_toggle():
     status1 = await db.toggle_user_notifications(test_uid)
     status2 = await db.toggle_user_notifications(test_uid)
     assert status1 != status2
+
+def test_hub_locales_keys():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    keys = [
+        "btn_hub_training", "btn_hub_vocab", "btn_hub_exams", "btn_hub_settings",
+        "hub_training_title", "hub_vocab_title", "hub_exams_title", "hub_settings_title",
+        "btn_smart_review", "btn_verbs_sprint", "btn_exam_sprechen",
+        "smart_review_empty"
+    ]
+    for k in keys:
+        assert k in ru, f"Missing key {k} in ru.json"
+        assert k in en, f"Missing key {k} in en.json"
+
+def test_verbs_sprint_service():
+    from services.verbs_service import GERMAN_VERBS_DATA, generate_verb_sprint_question
+    assert len(GERMAN_VERBS_DATA) >= 20
+    q = generate_verb_sprint_question(lang="ru")
+    assert "prompt" in q
+    assert "options" in q
+    assert len(q["options"]) == 4
+    assert "correct" in q
+    assert q["correct"] in q["options"]
+    assert "explanation" in q
+
+    q_en = generate_verb_sprint_question(lang="en")
+    assert "prompt" in q_en
+    assert len(q_en["options"]) == 4
+    assert q_en["correct"] in q_en["options"]
+
+def test_sprechen_tasks_and_musterantwort():
+    from services.sprechen_service import SPRECHEN_TASKS, get_sprechen_task, extract_sprechen_musterantwort
+    assert len(SPRECHEN_TASKS) >= 6
+    for t in SPRECHEN_TASKS:
+        assert t["level"] in ("A1", "A2", "B1")
+        assert "ru" in t["title"] and "en" in t["title"]
+        assert "ru" in t["instructions"] and "en" in t["instructions"]
+        assert "starter_hint" in t
+
+    task_a1 = get_sprechen_task("A1")
+    assert task_a1["level"] == "A1"
+
+    sample_review = """
+🎯 **Оценка: 88 / 100 (B1)**
+
+**Разбор:**
+Хороший темп речи.
+
+---
+🌟 **Musterantwort:**
+Guten Tag! Ich möchte gern einen Termin für nächste Woche vereinbaren. Passt es Ihnen am Mittwoch um 10 Uhr? Vielen Dank!
+---
+"""
+    clean_audio_text = extract_sprechen_musterantwort(sample_review)
+    assert "Guten Tag! Ich möchte gern einen Termin" in clean_audio_text
+    assert "Оценка" not in clean_audio_text
+
+@pytest.mark.anyio
+async def test_db_smart_review():
+    from database import db
+    import random
+    await db.init_db()
+
+    test_uid = random.randint(100000000, 999999999)
+    await db.get_or_create_user(test_uid, "review_test", "ReviewTester")
+
+    # Изначально список повторения пуст
+    count = await db.get_review_words_count(test_uid)
+    assert count == 0
+
+    # Добавляем слово со статусом 'learning'
+    word = await db.get_random_word(lang="ru")
+    assert word is not None
+    await db.set_word_status(test_uid, word["id"], "learning")
+
+    count_after = await db.get_review_words_count(test_uid)
+    assert count_after == 1
+
+    words_to_rev = await db.get_words_for_review(test_uid, lang="ru", limit=5)
+    assert len(words_to_rev) == 1
+    assert words_to_rev[0]["id"] == word["id"]
+
 
 
 
