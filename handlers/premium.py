@@ -39,7 +39,11 @@ async def cb_menu_premium(callback: CallbackQuery, state: FSMContext):
     ref_stats = await db.get_referral_stats(user_id)
 
     if is_active and until_date:
-        active_notice = i18n.get("premium_already_active", lang, until_date=until_date[:10])
+        if until_date == "lifetime":
+            active_notice = i18n.get("premium_lifetime_active", lang)
+            trial_available = False
+        else:
+            active_notice = i18n.get("premium_already_active", lang, until_date=until_date[:10])
         full_text = f"{active_notice}\n\n{i18n.get('premium_info', lang)}"
     else:
         full_text = i18n.get("premium_info", lang)

@@ -10,6 +10,8 @@ from premium_config import (
     PROMO_CODES,
     PREMIUM_PLANS,
     REFERRAL_CONFIG,
+    LIFETIME_VIP_USERS,
+    is_lifetime_vip_in_config,
     get_promo_info,
     get_plan_by_id,
     get_plan_price,
@@ -143,6 +145,8 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN premium_until TIMESTAMP")
             if "trial_used" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN trial_used INTEGER DEFAULT 0")
+            if "is_lifetime_vip" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN is_lifetime_vip INTEGER DEFAULT 0")
             if "daily_ai_count" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN daily_ai_count INTEGER DEFAULT 0")
             if "daily_exam_count" not in user_cols:
@@ -611,22 +615,93 @@ async def update_daily_streak(user_id: int) -> int:
             return new_streak
 
 async def is_user_premium(user_id: int) -> Tuple[bool, Optional[str]]:
-    """Проверить статус Stork Premium и дату окончания"""
+    """
+    Проверить статус Stork Premium и дату окончания.
+    Если у пользователя активирован пожизненный VIP, возвращает (True, "lifetime").
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT is_premium, premium_until FROM users WHERE user_id = ?", (user_id,)) as cursor:
+        async with db.execute(
+            "SELECT username, is_premium, premium_until, is_lifetime_vip FROM users WHERE user_id = ?",
+            (user_id,)
+        ) as cursor:
             row = await cursor.fetchone()
-            if not row or not row["is_premium"]:
-                return False, None
 
-            premium_until = row["premium_until"]
-            if premium_until:
-                now_str = datetime.now(timezone.utc).isoformat()
-                if premium_until < now_str:
-                    await db.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
-                    await db.commit()
-                    return False, None
-            return True, premium_until
+        if not row:
+            if is_lifetime_vip_in_config(user_id):
+                return True, "lifetime"
+            return False, None
+
+        username = row["username"]
+        is_db_lifetime = bool(row["is_lifetime_vip"]) if ("is_lifetime_vip" in row.keys() and row["is_lifetime_vip"]) else False
+        is_cfg_lifetime = is_lifetime_vip_in_config(user_id, username)
+
+        if is_db_lifetime or is_cfg_lifetime:
+            return True, "lifetime"
+
+        if not row["is_premium"]:
+            return False, None
+
+        premium_until = row["premium_until"]
+        if premium_until:
+            now_str = datetime.now(timezone.utc).isoformat()
+            if premium_until < now_str:
+                await db.execute("UPDATE users SET is_premium = 0 WHERE user_id = ?", (user_id,))
+                await db.commit()
+                return False, None
+        return True, premium_until
+
+async def set_user_lifetime_vip(target: Any, is_vip: bool = True) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Выдать или отозвать пожизненный VIP по user_id или username.
+    Возвращает (успех, статус, данные_пользователя).
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        user_row = None
+        target_str = str(target).strip()
+        if target_str.isdigit() or isinstance(target, int):
+            target_uid = int(target)
+            async with db.execute("SELECT * FROM users WHERE user_id = ?", (target_uid,)) as cursor:
+                user_row = await cursor.fetchone()
+        else:
+            clean_name = target_str.lstrip("@")
+            async with db.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_name,)) as cursor:
+                user_row = await cursor.fetchone()
+
+        if not user_row:
+            return False, "user_not_found", None
+
+        uid = user_row["user_id"]
+        if is_vip:
+            await db.execute("UPDATE users SET is_lifetime_vip = 1, is_premium = 1 WHERE user_id = ?", (uid,))
+        else:
+            now_str = datetime.now(timezone.utc).isoformat()
+            await db.execute("""
+                UPDATE users 
+                SET is_lifetime_vip = 0,
+                    is_premium = CASE 
+                        WHEN premium_until IS NOT NULL AND premium_until > ? THEN 1 
+                        ELSE 0 
+                    END
+                WHERE user_id = ?
+            """, (now_str, uid))
+        await db.commit()
+
+        return True, "success", dict(user_row)
+
+async def get_all_lifetime_vip_users() -> Dict[str, Any]:
+    """Получить список всех пользователей с активным вечным VIP (из базы и из конфига)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT user_id, username, first_name, is_lifetime_vip FROM users WHERE is_lifetime_vip = 1") as cursor:
+            db_vips = [dict(r) for r in await cursor.fetchall()]
+
+    cfg_vips = []
+    for item in LIFETIME_VIP_USERS:
+        cfg_vips.append(item)
+
+    return {"database_vips": db_vips, "config_vips": cfg_vips}
 
 async def activate_premium(user_id: int, days: int = 30) -> str:
     """

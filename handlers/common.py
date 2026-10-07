@@ -18,6 +18,7 @@ from keyboards.inline import (
     get_settings_hub_keyboard
 )
 from services.ui_helper import show_or_update_window
+from premium_config import is_lifetime_vip_in_config
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -211,7 +212,14 @@ async def cb_menu_stats(callback: CallbackQuery):
     notif_enabled = stats.get("notifications_enabled", True)
 
     if lang == "ru":
-        tariff_title = f"⭐️ *Тариф:* Stork Premium 👑 (до {stats['premium_until'][:10]})" if is_prem else "⭐️ *Тариф:* Бесплатный"
+        if is_prem:
+            if stats.get("premium_until") == "lifetime":
+                tariff_title = "👑 *Тариф:* Stork Lifetime VIP (Бессрочно)"
+            else:
+                tariff_title = f"⭐️ *Тариф:* Stork Premium 👑 (до {stats['premium_until'][:10]})"
+        else:
+            tariff_title = "⭐️ *Тариф:* Бесплатный"
+
         ai_quota_str = "Безлимитно ⭐️" if is_prem else f"{ai_count}/{ai_limit}"
         exam_quota_str = "Безлимитно ⭐️" if is_prem else f"{exam_count}/{exam_limit}"
         quota_info = (
@@ -221,7 +229,14 @@ async def cb_menu_stats(callback: CallbackQuery):
             f"🔔 *Напоминания о серии:* {'Включены' if notif_enabled else 'Выключены'}"
         )
     else:
-        tariff_title = f"⭐️ *Plan:* Stork Premium 👑 (until {stats['premium_until'][:10]})" if is_prem else "⭐️ *Plan:* Free"
+        if is_prem:
+            if stats.get("premium_until") == "lifetime":
+                tariff_title = "👑 *Plan:* Stork Lifetime VIP (Permanent)"
+            else:
+                tariff_title = f"⭐️ *Plan:* Stork Premium 👑 (until {stats['premium_until'][:10]})"
+        else:
+            tariff_title = "⭐️ *Plan:* Free"
+
         ai_quota_str = "Unlimited ⭐️" if is_prem else f"{ai_count}/{ai_limit}"
         exam_quota_str = "Unlimited ⭐️" if is_prem else f"{exam_count}/{exam_limit}"
         quota_info = (
@@ -308,4 +323,82 @@ async def cb_toggle_notif(callback: CallbackQuery):
     notice = i18n.get("reminder_toggled_on" if new_status else "reminder_toggled_off", lang)
     await callback.answer(notice)
     await cb_menu_stats(callback)
+
+# ==============================================================================
+# КОМАНДЫ УПРАВЛЕНИЯ ПОЖИЗНЕННЫМ VIP (ДЛЯ АДМИНИСТРАТОРА)
+# ==============================================================================
+
+async def _is_admin(user_id: int, username: str = None) -> bool:
+    """Проверка прав администратора для управления VIP"""
+    if user_id in (6725392176, 190417869): # ID создателя (Amir)
+        return True
+    return is_lifetime_vip_in_config(user_id, username)
+
+@router.message(Command("vip"))
+async def cmd_grant_vip(message: Message):
+    """Команда для администратора: выдать вечный VIP пользователю (/vip 12345678 или /vip @username)"""
+    if not await _is_admin(message.from_user.id, message.from_user.username):
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2:
+        await message.answer("ℹ️ Использование: `/vip <ID_или_username>`\nПример: `/vip 6725392176` или `/vip @username`", parse_mode="Markdown")
+        return
+
+    target = parts[1]
+    ok, status, user_data = await db.set_user_lifetime_vip(target, is_vip=True)
+    if ok and user_data:
+        name = user_data.get("first_name") or user_data.get("username") or str(user_data["user_id"])
+        uid = user_data["user_id"]
+        uname = f"(@{user_data['username']})" if user_data.get("username") else ""
+        await message.answer(f"👑 Пользователю *{name}* {uname} [ID: `{uid}`] успешно выдан *ПОЖИЗНЕННЫЙ VIP*!\nТеперь у него вечный премиум без каких-либо ограничений.", parse_mode="Markdown")
+    else:
+        await message.answer(f"❌ Пользователь `{target}` не найден в базе данных бота. Попроси его сначала нажать /start в боте или просто добавь его в список `LIFETIME_VIP_USERS` в `premium_config.py`.", parse_mode="Markdown")
+
+@router.message(Command("unvip"))
+async def cmd_revoke_vip(message: Message):
+    """Команда для администратора: забрать вечный VIP у пользователя (/unvip 12345678 или /unvip @username)"""
+    if not await _is_admin(message.from_user.id, message.from_user.username):
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2:
+        await message.answer("ℹ️ Использование: `/unvip <ID_или_username>`\nПример: `/unvip 6725392176` или `/unvip @username`", parse_mode="Markdown")
+        return
+
+    target = parts[1]
+    ok, status, user_data = await db.set_user_lifetime_vip(target, is_vip=False)
+    if ok and user_data:
+        name = user_data.get("first_name") or user_data.get("username") or str(user_data["user_id"])
+        uid = user_data["user_id"]
+        await message.answer(f"🚫 Пожизненный VIP у пользователя *{name}* [ID: `{uid}`] успешно отозван.\n(Если пользователь также указан в файле `premium_config.py`, не забудь удалить его и оттуда).", parse_mode="Markdown")
+    else:
+        await message.answer(f"❌ Пользователь `{target}` не найден в базе данных.", parse_mode="Markdown")
+
+@router.message(Command("viplist"))
+async def cmd_list_vip(message: Message):
+    """Команда для администратора: посмотреть всех пользователей с пожизненным VIP"""
+    if not await _is_admin(message.from_user.id, message.from_user.username):
+        return
+
+    vip_data = await db.get_all_lifetime_vip_users()
+    db_list = vip_data.get("database_vips", [])
+    cfg_list = vip_data.get("config_vips", [])
+
+    lines = ["👑 *Список пользователей с ПОЖИЗНЕННЫМ VIP:*\n"]
+    if cfg_list:
+        lines.append("📁 *Из файла premium_config.py:*")
+        for item in cfg_list:
+            lines.append(f"• `{item}`")
+        lines.append("")
+
+    if db_list:
+        lines.append("💾 *Из базы данных (выдано через /vip):*")
+        for u in db_list:
+            uname = f"@{u['username']}" if u.get("username") else "без username"
+            lines.append(f"• {u.get('first_name', 'Пользователь')} ({uname}) - ID: `{u['user_id']}`")
+    else:
+        lines.append("💾 В базе данных нет вручную выданных VIP.")
+
+    await message.answer("\n".join(lines), parse_mode="Markdown")
 

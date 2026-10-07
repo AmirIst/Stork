@@ -581,10 +581,15 @@ def test_premium_config_integrity():
 
 @pytest.mark.anyio
 async def test_trial_one_time_enforcement():
+    import aiosqlite
     from database import db
     await db.init_db()
 
     test_uid = 999111001
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
     await db.get_or_create_user(test_uid, "trial_user", "Tester")
 
     # Проверяем доступность до активации
@@ -606,10 +611,16 @@ async def test_trial_one_time_enforcement():
 
 @pytest.mark.anyio
 async def test_promo_code_one_time_per_user():
+    import aiosqlite
     from database import db
     await db.init_db()
 
     test_uid = 999222002
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM user_promo_activations WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
     await db.get_or_create_user(test_uid, "promo_user", "Tester")
 
     # 1. Неверный промокод
@@ -631,10 +642,17 @@ async def test_promo_code_one_time_per_user():
 
 @pytest.mark.anyio
 async def test_referral_system_and_milestones():
+    import aiosqlite
     from database import db
     await db.init_db()
 
     inviter_id = 999333000
+    ref_uids = [999333000 + i for i in range(12)]
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute(f"DELETE FROM users WHERE user_id IN ({','.join(map(str, ref_uids))})")
+        await conn.execute(f"DELETE FROM referrals WHERE inviter_id = {inviter_id} OR referred_id IN ({','.join(map(str, ref_uids))})")
+        await conn.commit()
+
     await db.get_or_create_user(inviter_id, "inviter", "Inviter")
 
     # Самореферал запрещен
@@ -677,6 +695,72 @@ async def test_referral_system_and_milestones():
     # Повторная регистрация того же реферала отклоняется
     dup_res = await db.register_referral(inviter_id, tenth_uid)
     assert dup_res is None
+
+def test_promo_prompt_no_example_leak():
+    ru_path = DATA_DIR.parent / "locales" / "ru.json"
+    en_path = DATA_DIR.parent / "locales" / "en.json"
+    with open(ru_path, "r", encoding="utf-8") as f:
+        ru = json.load(f)
+    with open(en_path, "r", encoding="utf-8") as f:
+        en = json.load(f)
+
+    # Проверяем, что в подсказках ввода промокода нет утечки реального промокода
+    assert "STORKVIP" not in ru["promo_prompt"], "STORKVIP is leaked in ru.json promo_prompt!"
+    assert "STORKVIP" not in en["promo_prompt"], "STORKVIP is leaked in en.json promo_prompt!"
+
+@pytest.mark.anyio
+async def test_lifetime_vip_config_and_db():
+    import aiosqlite
+    from database import db
+    from premium_config import is_lifetime_vip_in_config
+    await db.init_db()
+
+    # 1. Проверка через конфиг
+    test_cfg_uid = 6725392176
+    assert is_lifetime_vip_in_config(test_cfg_uid) is True
+    assert is_lifetime_vip_in_config(999999999, "Amirist1") is True
+    assert is_lifetime_vip_in_config(999999999, "random_stranger") is False
+
+    is_prem, until = await db.is_user_premium(test_cfg_uid)
+    assert is_prem is True
+    assert until == "lifetime"
+
+    # 2. Проверка через базу данных (выдача и отзыв)
+    test_db_uid = 999444001
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_db_uid,))
+        await conn.commit()
+
+    await db.get_or_create_user(test_db_uid, "friend_user", "Friend")
+
+    # Изначально не премиум
+    is_p_init, _ = await db.is_user_premium(test_db_uid)
+    assert is_p_init is False
+
+    # Выдаем пожизненный VIP
+    ok_grant, status_g, udata_g = await db.set_user_lifetime_vip(test_db_uid, is_vip=True)
+    assert ok_grant is True
+    assert status_g == "success"
+
+    is_p_grant, until_g = await db.is_user_premium(test_db_uid)
+    assert is_p_grant is True
+    assert until_g == "lifetime"
+
+    # Проверяем отображение в статистике
+    stats = await db.get_user_stats(test_db_uid)
+    assert stats["is_premium"] is True
+    assert stats["premium_until"] == "lifetime"
+    assert stats["daily_ai_limit"] == -1
+    assert stats["daily_exam_limit"] == -1
+
+    # Отзываем пожизненный VIP
+    ok_revoke, status_r, _ = await db.set_user_lifetime_vip(test_db_uid, is_vip=False)
+    assert ok_revoke is True
+    assert status_r == "success"
+
+    is_p_revoked, _ = await db.is_user_premium(test_db_uid)
+    assert is_p_revoked is False
+
 
 
 

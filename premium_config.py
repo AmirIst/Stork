@@ -115,9 +115,36 @@ REFERRAL_CONFIG: Dict[str, Any] = {
 }
 
 
+# ------------------------------------------------------------------------------
+# 5. ПОЖИЗНЕННЫЙ VIP (LIFETIME PREMIUM)
+# ------------------------------------------------------------------------------
+# Список Telegram ID или юзернеймов пользователей с вечным VIP-доступом.
+# Добавь свой ID или ID друзей сюда: у них будет пожизненный премиум без ограничений.
+# Если захочешь забрать VIP обратно: просто удали ID или юзернейм из этого списка!
+#
+# Можно указывать как числовой ID, так и юзернейм (с @ или без).
+LIFETIME_VIP_USERS: List[Any] = [
+    6725392176,        # Твой основной Telegram ID (Amir)
+    "@Amirist1",       # Твой юзернейм
+]
+
+
 # ==============================================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С КОНФИГУРАЦИЕЙ
 # ==============================================================================
+
+def is_lifetime_vip_in_config(user_id: int, username: Optional[str] = None) -> bool:
+    """Проверить, включен ли пользователь в список пожизненных VIP в конфиге"""
+    if user_id in LIFETIME_VIP_USERS or str(user_id) in LIFETIME_VIP_USERS:
+        return True
+
+    if username:
+        clean_user = username.lower().lstrip("@")
+        for item in LIFETIME_VIP_USERS:
+            if isinstance(item, str) and item.lower().lstrip("@") == clean_user:
+                return True
+    return False
+
 
 def get_promo_info(code: Optional[str]) -> Optional[Dict[str, Any]]:
     """Найти промокод без учета регистра (STORKVIP, storkvip и т.д.)"""
