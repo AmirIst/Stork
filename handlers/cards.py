@@ -18,7 +18,8 @@ async def send_flashcard(callback: CallbackQuery, lang: str):
     level, category = await db.get_user_filters(callback.from_user.id)
     word_data = await db.get_random_word(lang=lang, level=level, category=category)
     if not word_data:
-        await show_or_update_window(callback, "По выбранным фильтрам слов не найдено.", parse_mode="Markdown")
+        no_words = "По выбранным фильтрам слов не найдено." if lang == "ru" else "No words found for the selected filters."
+        await show_or_update_window(callback, no_words, parse_mode="Markdown")
         return
 
     plural_str = f"({word_data['plural']})" if word_data.get("plural") else ""
@@ -105,7 +106,8 @@ async def cb_reveal_card(callback: CallbackQuery):
     word_data = await db.get_word_by_id(word_id, lang=lang)
 
     if not word_data:
-        await callback.answer("Слово не найдено", show_alert=True)
+        err_msg = "Слово не найдено" if lang == "ru" else "Word not found"
+        await callback.answer(err_msg, show_alert=True)
         return
 
     plural_str = f"({word_data['plural']})" if word_data.get("plural") else ""

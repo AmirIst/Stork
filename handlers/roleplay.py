@@ -43,11 +43,13 @@ async def cb_start_scenario(callback: CallbackQuery, state: FSMContext):
     """Запуск выбранного сценария и реплика собеседника"""
     scenario_id = callback.data.split(":")[1]
     scenario = get_roleplay_scenario(scenario_id)
+    lang = await db.get_user_lang(callback.from_user.id)
+
     if not scenario:
-        await callback.answer("Сценарий не найден", show_alert=True)
+        not_found_msg = "Сценарий не найден" if lang == "ru" else "Scenario not found"
+        await callback.answer(not_found_msg, show_alert=True)
         return
 
-    lang = await db.get_user_lang(callback.from_user.id)
     character_name = scenario["character"].get(lang, scenario["character"]["ru"])
     title = scenario["title"].get(lang, scenario["title"]["ru"])
     goal = scenario["goal"].get(lang, scenario["goal"]["ru"])
@@ -61,17 +63,30 @@ async def cb_start_scenario(callback: CallbackQuery, state: FSMContext):
         last_reply_de=scenario["starter_de"]
     )
 
-    intro_text = (
-        f"🎭 *Сценарий:* {scenario['icon']} {title}\n"
-        f"👤 *Собеседник:* {character_name}\n"
-        f"🎯 *Цель:* {goal}\n\n"
-        f"────────────────────\n"
-        f"🇩🇪 *{character_name}:*\n"
-        f"«{scenario['starter_de']}»\n\n"
-        f"💬 _{starter_tr}_\n"
-        f"────────────────────\n\n"
-        f"👉 _Напиши ответ на немецком или надиктуй голосовое сообщение прямо сейчас!_"
-    )
+    if lang == "ru":
+        intro_text = (
+            f"🎭 *Сценарий:* {scenario['icon']} {title}\n"
+            f"👤 *Собеседник:* {character_name}\n"
+            f"🎯 *Цель:* {goal}\n\n"
+            f"────────────────────\n"
+            f"🇩🇪 *{character_name}:*\n"
+            f"«{scenario['starter_de']}»\n\n"
+            f"💬 _{starter_tr}_\n"
+            f"────────────────────\n\n"
+            f"👉 _Напиши ответ на немецком или надиктуй голосовое сообщение прямо сейчас!_"
+        )
+    else:
+        intro_text = (
+            f"🎭 *Scenario:* {scenario['icon']} {title}\n"
+            f"👤 *Conversation Partner:* {character_name}\n"
+            f"🎯 *Goal:* {goal}\n\n"
+            f"────────────────────\n"
+            f"🇩🇪 *{character_name}:*\n"
+            f"«{scenario['starter_de']}»\n\n"
+            f"💬 _{starter_tr}_\n"
+            f"────────────────────\n\n"
+            f"👉 _Reply in German by text or voice message right now!_"
+        )
 
     kb = get_roleplay_in_dialog_keyboard(scenario_id, lang=lang)
     await show_or_update_window(callback, intro_text, reply_markup=kb, parse_mode="Markdown")
@@ -88,27 +103,32 @@ async def cb_roleplay_hint(callback: CallbackQuery):
 
     lang = await db.get_user_lang(callback.from_user.id)
     hints = scenario["hints"].get(lang, scenario["hints"]["ru"])
-    hint_text = "💡 Полезные фразы:\n\n" + "\n\n".join([f"• {h}" for h in hints])
+    hint_header = "💡 Полезные фразы:" if lang == "ru" else "💡 Useful phrases:"
+    hint_text = f"{hint_header}\n\n" + "\n\n".join([f"• {h}" for h in hints])
     await callback.answer(hint_text, show_alert=True)
 
 @router.callback_query(F.data == "rp_voice_last")
 async def cb_roleplay_voice_last(callback: CallbackQuery, state: FSMContext):
     """Озвучка последней реплики немецкого собеседника"""
+    lang = await db.get_user_lang(callback.from_user.id)
     data = await state.get_data()
     last_de = data.get("last_reply_de", "")
     if not last_de:
-        await callback.answer("Нет реплики для озвучки", show_alert=True)
+        no_phrase_msg = "Нет реплики для озвучки" if lang == "ru" else "No phrase to synthesize"
+        await callback.answer(no_phrase_msg, show_alert=True)
         return
 
-    await callback.answer("Озвучиваю реплику собеседника...")
+    wait_msg = "Озвучиваю реплику собеседника..." if lang == "ru" else "Synthesizing partner voice..."
+    await callback.answer(wait_msg)
     await callback.message.bot.send_chat_action(chat_id=callback.message.chat.id, action="record_voice")
 
     audio_bytes = await synthesize_speech(last_de)
     if audio_bytes:
         voice_file = BufferedInputFile(audio_bytes, filename="roleplay_partner.mp3")
+        caption_label = "Реплика" if lang == "ru" else "Phrase"
         await callback.message.answer_voice(
             voice=voice_file,
-            caption=f"🗣️ *Реплика:* _{last_de}_",
+            caption=f"🗣️ *{caption_label}:* _{last_de}_",
             parse_mode="Markdown"
         )
         mark_voice_sent(callback.from_user.id)
@@ -129,16 +149,18 @@ async def handle_roleplay_voice_message(message: Message, state: FSMContext):
 
         transcribed = await transcribe_voice(audio_bytes, mime_type="audio/ogg")
         if not transcribed:
-            err_msg = "🪶 Не удалось разобрать аудио. Попробуй сказать еще раз или напиши текстом!" if lang == "ru" else "Could not transcribe audio. Please try again!"
+            err_msg = "🪶 Не удалось разобрать аудио. Попробуй сказать еще раз или напиши текстом!" if lang == "ru" else "🪶 Could not transcribe audio. Please try again or type text!"
             await message.answer(err_msg)
             return
 
         # Показываем распознанный текст ответа
-        await message.answer(f"🗣️ *Твой ответ (распознано):*\n_{transcribed}_", parse_mode="Markdown")
+        transcribed_label = "Твой ответ (распознано):" if lang == "ru" else "Your response (transcribed):"
+        await message.answer(f"🗣️ *{transcribed_label}*\n_{transcribed}_", parse_mode="Markdown")
         await process_roleplay_turn(message, state, user_text=transcribed, lang=lang)
     except Exception as e:
         logger.error(f"Ошибка в аудио ролевого диалога: {e}")
-        await message.answer("Ошибка при обработке голоса. Напиши ответ текстом!")
+        err_msg = "Ошибка при обработке голоса. Напиши ответ текстом!" if lang == "ru" else "Voice processing error. Please reply with text!"
+        await message.answer(err_msg)
 
 @router.message(RoleplayState.in_dialog, F.text)
 async def handle_roleplay_text_message(message: Message, state: FSMContext):
@@ -175,7 +197,8 @@ async def process_roleplay_turn(message: Message, state: FSMContext, user_text: 
         last_reply_de=reply_data["reply_de"]
     )
 
-    hint_str = f"\n\n💡 _Подсказка:_ `{reply_data['hint']}`" if reply_data.get("hint") else ""
+    hint_label = "Подсказка:" if lang == "ru" else "Hint:"
+    hint_str = f"\n\n💡 _{hint_label}_ `{reply_data['hint']}`" if reply_data.get("hint") else ""
     response_text = (
         f"🇩🇪 *{character_name}:*\n"
         f"«{reply_data['reply_de']}»\n\n"
@@ -196,7 +219,8 @@ async def cb_roleplay_finish(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     lang = await db.get_user_lang(user_id)
 
-    await callback.answer("Аист анализирует диалог и готовит разбор..." if lang == "ru" else "Analyzing dialogue...")
+    wait_analysis = "Аист анализирует диалог и готовит разбор..." if lang == "ru" else "Analyzing dialogue..."
+    await callback.answer(wait_analysis)
     await callback.message.bot.send_chat_action(chat_id=callback.message.chat.id, action="typing")
 
     evaluation = await evaluate_roleplay_session(
@@ -212,8 +236,9 @@ async def cb_roleplay_finish(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
 
+    finish_header = "🏁 *Ролевой диалог завершен!*" if lang == "ru" else "🏁 *Roleplay dialogue finished!*"
     full_result = (
-        f"🏁 *Ролевой диалог завершен!*\n\n"
+        f"{finish_header}\n\n"
         f"{evaluation}"
     )
 

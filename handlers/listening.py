@@ -108,9 +108,10 @@ async def cb_check_listening_answer(callback: CallbackQuery):
     tr_text = task["transcript_tr"].get(lang, task["transcript_tr"]["ru"])
     header_tr = i18n.get("listening_transcript_header", lang)
 
+    explanation_label = "Разбор:" if lang == "ru" else "Explanation:"
     response_text = (
         f"{header}\n\n"
-        f"💡 *Разбор:* {explanation}\n\n"
+        f"💡 *{explanation_label}* {explanation}\n\n"
         f"{header_tr}\n"
         f"🇩🇪 _{task['audio_text']}_\n\n"
         f"💬 _{tr_text}_"

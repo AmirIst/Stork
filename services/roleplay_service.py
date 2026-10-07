@@ -199,22 +199,27 @@ async def generate_roleplay_reply(
     native_lang: str = "ru"
 ) -> Dict[str, Any]:
     """Генерация реплики немецкого собеседника в ролевой игре через Gemini"""
+    scenario_title = scenario["title"].get(native_lang, scenario["title"]["ru"])
+    scenario_char = scenario["character"].get(native_lang, scenario["character"]["ru"])
+    scenario_goal = scenario["goal"].get(native_lang, scenario["goal"]["ru"])
+    target_lang_name = "Russisch" if native_lang == "ru" else "Englisch"
+
     system_prompt = f"""
 Du bist ein deutscher Muttersprachler und spielst eine Rolle in einer Sprachlern-Simulation.
-Szenario: {scenario['title'].get('ru', '')}
-Deine Rolle: {scenario['character'].get('ru', '')}
-Ziel des Lernenden: {scenario['goal'].get('ru', '')}
+Szenario: {scenario_title}
+Deine Rolle: {scenario_char}
+Ziel des Lernenden: {scenario_goal}
 Niveaustufe: {scenario['level']} (Passe deinen Wortschatz und deine Satzstruktur genau an dieses Niveau an!).
 
 REGELN:
 1. Bleibe STRENG in deiner Rolle! Antworte authentisch, freundlich und hilfsbereit.
 2. Formuliere deine Antwort auf Deutsch (1 bis maximal 3 Sätze). Keine langen Monologe!
-3. Gib darunter in Klammern die Übersetzung auf {native_lang.upper()} an.
+3. Gib darunter in Klammern die Übersetzung auf {target_lang_name} an.
 4. Gib am Ende eine kurze Empfehlung (Tipp), was der Lernende als Nächstes antworten könnte.
 
 FORMAT:
 DE: [Deine deutsche Antwort]
-TR: [Übersetzung auf {native_lang}]
+TR: [Übersetzung auf {target_lang_name}]
 HINT: [Ein kurzer Beispielsatz auf Deutsch, den der Lernende sagen kann]
 """
 
@@ -281,6 +286,10 @@ async def evaluate_roleplay_session(
     native_lang: str = "ru"
 ) -> str:
     """Итоговая оценка ролевого диалога по шкале успеха и разбор ошибок"""
+    scenario_title = scenario["title"].get(native_lang, scenario["title"]["ru"])
+    scenario_goal = scenario["goal"].get(native_lang, scenario["goal"]["ru"])
+    target_lang_name = "Russisch" if native_lang == "ru" else "Englisch"
+
     dialog_text = ""
     for h in history:
         dialog_text += f"{h['role']}: {h['message']}\n"
@@ -288,13 +297,13 @@ async def evaluate_roleplay_session(
     system_prompt = f"""
 Du bist ein erfahrener Deutschlehrer.
 Der Schüler hat gerade ein Rollenspiel absolviert.
-Szenario: {scenario['title'].get('ru', '')}
+Szenario: {scenario_title}
 Rolle des Schülers: Kunde / Patient / Bürger
 Niveaustufe: {scenario['level']}
-Ziel: {scenario['goal'].get('ru', '')}
+Ziel: {scenario_goal}
 
-Bewerte den Dialog auf {'Russisch' if native_lang == 'ru' else 'Englisch'}.
-Gib eine Punktzahl von 0 bis 100 für die Erreichung des Ziels, hebe gute Formulierungen hervor und korrigiere 1-3 Grammatikfehler freundlich.
+Bewerte den Dialog auf {target_lang_name}.
+Gib eine Punktzahl von 0 bis 100 für die Erreichung des Ziels, hebe gute Formulierungen hervor und korrigiere 1-3 Grammatikfehler freundlich. Bitte keine langen Gedankenstriche (—) verwenden, nur einfache Bindestriche (-) oder Doppelpunkte!
 
 Struktur:
 🎯 **Ergebnis:** [Punkte/100] - [Kurzes Fazit]
@@ -324,7 +333,7 @@ Struktur:
 
     if native_lang == "ru":
         return (
-            "🎯 **Оценка: 85 / 100** — Отличная практика!\n\n"
+            "🎯 **Оценка: 85 / 100** - Отличная практика!\n\n"
             "🌟 **Что получилось хорошо:**\n"
             "• Ты уверенно поддержал беседу и решил поставленную задачу.\n"
             "• Использовал вежливые формы обращения.\n\n"
@@ -333,7 +342,7 @@ Struktur:
         )
     else:
         return (
-            "🎯 **Score: 85 / 100** — Great practice!\n\n"
+            "🎯 **Score: 85 / 100** - Great practice!\n\n"
             "🌟 **Strong points:**\n"
             "• You maintained the dialogue and resolved the scenario goal.\n"
             "• You used polite forms correctly.\n\n"

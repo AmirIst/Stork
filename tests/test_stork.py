@@ -538,6 +538,64 @@ def test_locales_roleplay_keys():
     from database.db import ACHIEVEMENTS_REGISTRY
     assert "roleplay_master" in ACHIEVEMENTS_REGISTRY
 
+def test_roleplay_bilingual_intro_and_localization():
+    """Проверка разделения языков в карточке ролевой игры: английский без русских слов и наоборот"""
+    from services.roleplay_service import get_roleplay_scenario
+
+    scenario = get_roleplay_scenario("buergeramt_b1")
+    assert scenario is not None
+
+    # Английская локализация
+    lang_en = "en"
+    char_en = scenario["character"].get(lang_en)
+    title_en = scenario["title"].get(lang_en)
+    goal_en = scenario["goal"].get(lang_en)
+    starter_tr_en = scenario["starter_tr"].get(lang_en)
+
+    intro_en = (
+        f"🎭 *Scenario:* {scenario['icon']} {title_en}\n"
+        f"👤 *Conversation Partner:* {char_en}\n"
+        f"🎯 *Goal:* {goal_en}\n\n"
+        f"────────────────────\n"
+        f"🇩🇪 *{char_en}:*\n"
+        f"«{scenario['starter_de']}»\n\n"
+        f"💬 _{starter_tr_en}_\n"
+        f"────────────────────\n\n"
+        f"👉 _Reply in German by text or voice message right now!_"
+    )
+    # Проверяем, что в английском тексте нет русских служебных меток
+    assert "Сценарий" not in intro_en
+    assert "Собеседник" not in intro_en
+    assert "Цель" not in intro_en
+    assert "Напиши ответ" not in intro_en
+    assert "Scenario:" in intro_en
+    assert "Conversation Partner:" in intro_en
+    assert "Goal:" in intro_en
+
+    # Русская локализация
+    lang_ru = "ru"
+    char_ru = scenario["character"].get(lang_ru)
+    title_ru = scenario["title"].get(lang_ru)
+    goal_ru = scenario["goal"].get(lang_ru)
+    starter_tr_ru = scenario["starter_tr"].get(lang_ru)
+
+    intro_ru = (
+        f"🎭 *Сценарий:* {scenario['icon']} {title_ru}\n"
+        f"👤 *Собеседник:* {char_ru}\n"
+        f"🎯 *Цель:* {goal_ru}\n\n"
+        f"────────────────────\n"
+        f"🇩🇪 *{char_ru}:*\n"
+        f"«{scenario['starter_de']}»\n\n"
+        f"💬 _{starter_tr_ru}_\n"
+        f"────────────────────\n\n"
+        f"👉 _Напиши ответ на немецком или надиктуй голосовое сообщение прямо сейчас!_"
+    )
+    assert "Сценарий:" in intro_ru
+    assert "Собеседник:" in intro_ru
+    assert "Цель:" in intro_ru
+    assert "Scenario:" not in intro_ru
+
+
 def test_premium_config_integrity():
     from premium_config import (
         FREE_TRIAL_DAYS,
