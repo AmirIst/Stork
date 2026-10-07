@@ -1058,6 +1058,49 @@ def test_tribute_config_and_keyboard():
     premium_config.TRIBUTE_CONFIG["plan_30d_url"] = None
     premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = None
 
+@pytest.mark.anyio
+async def test_db_user_cache_and_pragmas():
+    """Тест оперативного in-memory кэширования языка и фильтров, а также PRAGMA SQLite"""
+    from database import db
+    import aiosqlite
+    from config import DB_PATH
+
+    # Инициализация БД для применения PRAGMA и индексов
+    await db.init_db()
+
+    # Сброс кэша
+    db.clear_user_cache()
+
+    # Проверка работы кэша языка
+    test_uid = 999888777
+    await db.update_user_lang(test_uid, "en")
+    assert db._USER_LANG_CACHE.get(test_uid) == "en"
+
+    # get_user_lang возвращает значение из кэша мгновенно
+    lang = await db.get_user_lang(test_uid)
+    assert lang == "en"
+
+    # Проверка работы кэша фильтров
+    await db.set_user_level(test_uid, "B1")
+    await db.set_user_category(test_uid, "food")
+    lvl, cat = await db.get_user_filters(test_uid)
+    assert lvl == "B1"
+    assert cat == "food"
+    assert db._USER_FILTERS_CACHE.get(test_uid) == ("B1", "food")
+
+    # Проверка WAL-режима SQLite
+    async with aiosqlite.connect(DB_PATH) as conn:
+        async with conn.execute("PRAGMA journal_mode;") as cursor:
+            row = await cursor.fetchone()
+            assert row[0].lower() == "wal"
+
+        # Проверка наличия оптимизирующих индексов
+        async with conn.execute("SELECT name FROM sqlite_master WHERE type='index';") as cursor:
+            indexes = [r[0] for r in await cursor.fetchall()]
+            assert "idx_words_level_cat" in indexes
+            assert "idx_progress_user_status_rev" in indexes
+            assert "idx_translations_lang" in indexes
+
 
 
 

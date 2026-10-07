@@ -49,20 +49,20 @@ async def send_flashcard(callback: CallbackQuery, lang: str):
 @router.callback_query(F.data == "menu_cards")
 async def cb_menu_cards(callback: CallbackQuery):
     """Открытие карточек из главного меню"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_flashcard(callback, lang)
-    await callback.answer()
 
 @router.callback_query(F.data == "menu_smart_review")
 async def cb_menu_smart_review(callback: CallbackQuery):
     """Режим умного повторения слов, в которых ученик ранее ошибался"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     review_words = await db.get_words_for_review(callback.from_user.id, lang=lang, limit=10)
     
     if not review_words:
         text = i18n.get("smart_review_empty", lang)
         await show_or_update_window(callback, text, reply_markup=get_back_to_menu_keyboard(lang), parse_mode="Markdown")
-        await callback.answer()
         return
 
     # Берем первое слово из очереди на повторение
@@ -89,25 +89,25 @@ async def cb_menu_smart_review(callback: CallbackQuery):
         reply_markup=get_card_keyboard(word_data["id"], lang=lang, is_revealed=False),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data == "next_card")
 async def cb_next_card(callback: CallbackQuery):
     """Переход к следующей карточке"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_flashcard(callback, lang)
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("card_rev:"))
 async def cb_reveal_card(callback: CallbackQuery):
     """Показать перевод и кнопки оценки Anki"""
+    await callback.answer()
     word_id = int(callback.data.split(":")[1])
     lang = await db.get_user_lang(callback.from_user.id)
     word_data = await db.get_word_by_id(word_id, lang=lang)
 
     if not word_data:
         err_msg = "Слово не найдено" if lang == "ru" else "Word not found"
-        await callback.answer(err_msg, show_alert=True)
+        await callback.message.answer(err_msg)
         return
 
     plural_str = f"({word_data['plural']})" if word_data.get("plural") else ""
@@ -135,11 +135,11 @@ async def cb_reveal_card(callback: CallbackQuery):
         reply_markup=get_card_keyboard(word_data["id"], lang=lang, is_revealed=True),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("rate:"))
 async def cb_rate_card(callback: CallbackQuery):
     """Сохранение оценки карточки в стиле Anki (знаю, повторить, учу)"""
+    await callback.answer()
     parts = callback.data.split(":")
     word_id = int(parts[1])
     status = parts[2]
@@ -151,7 +151,6 @@ async def cb_rate_card(callback: CallbackQuery):
     word_data = await db.get_word_by_id(word_id, lang=lang)
 
     if not word_data:
-        await callback.answer()
         return
 
     status_msg = i18n.get(f"status_marked_{status}", lang)
@@ -180,4 +179,3 @@ async def cb_rate_card(callback: CallbackQuery):
         reply_markup=get_card_rated_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"
     )
-    await callback.answer()

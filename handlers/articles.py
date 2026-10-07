@@ -38,20 +38,21 @@ async def send_article_challenge(callback: CallbackQuery, lang: str):
 @router.callback_query(F.data == "menu_articles")
 async def cb_start_articles(callback: CallbackQuery):
     """Запуск тренажера артиклей из меню"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_article_challenge(callback, lang)
-    await callback.answer()
 
 @router.callback_query(F.data == "next_article")
 async def cb_next_article(callback: CallbackQuery):
     """Следующее слово в тренажере артиклей"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_article_challenge(callback, lang)
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("art:"))
 async def cb_check_article(callback: CallbackQuery):
     """Проверка выбранного артикля"""
+    await callback.answer()
     parts = callback.data.split(":")
     word_id = int(parts[1])
     chosen_article = parts[2]
@@ -61,7 +62,7 @@ async def cb_check_article(callback: CallbackQuery):
 
     if not word_data:
         err_msg = "Слово не найдено" if lang == "ru" else "Word not found"
-        await callback.answer(err_msg, show_alert=True)
+        await callback.message.answer(err_msg)
         return
 
     correct_article = word_data["article"].lower()
@@ -98,4 +99,3 @@ async def cb_check_article(callback: CallbackQuery):
         reply_markup=get_next_article_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"
     )
-    await callback.answer()

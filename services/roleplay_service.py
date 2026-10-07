@@ -2,14 +2,15 @@ import logging
 from typing import Dict, Any, List, Optional
 import httpx
 from config import GEMINI_API_KEY
+from services.ai_tutor import get_ai_client
 
 logger = logging.getLogger(__name__)
 
 GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
-    "gemini-3.5-flash-lite"
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash"
 ]
 
 ROLEPLAY_SCENARIOS: List[Dict[str, Any]] = [
@@ -228,6 +229,7 @@ HINT: [Ein kurzer Beispielsatz auf Deutsch, den der Lernende sagen kann]
         dialog_context += f"{h['role']}: {h['message']}\n"
     dialog_context += f"Lernender: {user_message}\n"
 
+    client = get_ai_client()
     for model_name in GEMINI_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         payload = {
@@ -236,36 +238,35 @@ HINT: [Ein kurzer Beispielsatz auf Deutsch, den der Lernende sagen kann]
             "generationConfig": {"temperature": 0.4, "maxOutputTokens": 350}
         }
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates and "content" in candidates[0]:
-                        raw = candidates[0]["content"]["parts"][0]["text"].strip()
-                        
-                        # Парсинг ответа
-                        reply_de = ""
-                        reply_tr = ""
-                        hint = ""
-                        for line in raw.split("\n"):
-                            line = line.strip()
-                            if line.startswith("DE:"):
-                                reply_de = line.replace("DE:", "").strip()
-                            elif line.startswith("TR:"):
-                                reply_tr = line.replace("TR:", "").strip()
-                            elif line.startswith("HINT:"):
-                                hint = line.replace("HINT:", "").strip()
+            resp = await client.post(url, json=payload, timeout=15.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates and "content" in candidates[0]:
+                    raw = candidates[0]["content"]["parts"][0]["text"].strip()
+                    
+                    # Парсинг ответа
+                    reply_de = ""
+                    reply_tr = ""
+                    hint = ""
+                    for line in raw.split("\n"):
+                        line = line.strip()
+                        if line.startswith("DE:"):
+                            reply_de = line.replace("DE:", "").strip()
+                        elif line.startswith("TR:"):
+                            reply_tr = line.replace("TR:", "").strip()
+                        elif line.startswith("HINT:"):
+                            hint = line.replace("HINT:", "").strip()
 
-                        if not reply_de:
-                            reply_de = raw.split("\n")[0].strip()
+                    if not reply_de:
+                        reply_de = raw.split("\n")[0].strip()
 
-                        return {
-                            "reply_de": reply_de,
-                            "reply_tr": reply_tr,
-                            "hint": hint,
-                            "raw": raw
-                        }
+                    return {
+                        "reply_de": reply_de,
+                        "reply_tr": reply_tr,
+                        "hint": hint,
+                        "raw": raw
+                    }
         except Exception as e:
             logger.warning(f"Ошибка модели {model_name} в ролевой игре: {e}")
             continue
@@ -312,6 +313,7 @@ Struktur:
 💡 **Wichtige Redemittel:** [2 nützliche Sätze auf Deutsch für diese Situation]
 """
 
+    client = get_ai_client()
     for model_name in GEMINI_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         payload = {
@@ -320,13 +322,12 @@ Struktur:
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600}
         }
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates and "content" in candidates[0]:
-                        return candidates[0]["content"]["parts"][0]["text"].strip()
+            resp = await client.post(url, json=payload, timeout=20.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates and "content" in candidates[0]:
+                    return candidates[0]["content"]["parts"][0]["text"].strip()
         except Exception as e:
             logger.warning(f"Ошибка при оценке ролевой игры {model_name}: {e}")
             continue

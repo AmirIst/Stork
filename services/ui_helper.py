@@ -64,7 +64,9 @@ async def show_or_update_window(
                 reply_markup=reply_markup,
                 parse_mode=parse_mode
             )
-        except Exception:
+        except Exception as e:
+            if "message is not modified" in str(e).lower():
+                return callback.message
             return await callback.message.answer(
                 text=text,
                 reply_markup=reply_markup,

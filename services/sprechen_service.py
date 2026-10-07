@@ -3,14 +3,15 @@ import logging
 from typing import Dict, Any, Optional
 import httpx
 from config import GEMINI_API_KEY
+from services.ai_tutor import get_ai_client
 
 logger = logging.getLogger(__name__)
 
 GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
-    "gemini-3.5-flash-lite"
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash"
 ]
 
 SPRECHEN_TASKS = [
@@ -179,6 +180,7 @@ async def evaluate_student_speaking(task: Dict[str, Any], transcribed_text: str,
 Пожалуйста, оцени ответ строго по критериям экзаменационной комиссии!
 """
 
+    client = get_ai_client()
     for model_name in GEMINI_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         payload = {
@@ -187,15 +189,14 @@ async def evaluate_student_speaking(task: Dict[str, Any], transcribed_text: str,
             "generationConfig": {"temperature": 0.4, "maxOutputTokens": 900}
         }
         try:
-            async with httpx.AsyncClient(timeout=16.0) as client:
-                res = await client.post(url, json=payload)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates and "content" in candidates[0]:
-                        parts = candidates[0]["content"].get("parts", [])
-                        if parts and "text" in parts[0]:
-                            return parts[0]["text"].strip()
+            res = await client.post(url, json=payload, timeout=16.0)
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get("candidates", [])
+                if candidates and "content" in candidates[0]:
+                    parts = candidates[0]["content"].get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"].strip()
         except Exception as e:
             logger.warning(f"Ошибка модели {model_name} для Sprechen: {e}")
             continue

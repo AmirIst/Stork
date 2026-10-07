@@ -178,61 +178,62 @@ async def cmd_language(message: Message):
 @router.callback_query(F.data == "back_to_menu")
 async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню через Inline-кнопку"""
+    await callback.answer()
     await state.clear()
     lang = await db.get_user_lang(callback.from_user.id)
     text = i18n.get("menu_title", lang)
     kb = get_main_menu_keyboard(lang)
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
-    await callback.answer()
 
 @router.callback_query(F.data == "hub_training")
 async def cb_hub_training(callback: CallbackQuery):
     """Подменю: Раздел тренировок"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     text = i18n.get("hub_training_title", lang)
     await show_or_update_window(callback, text, reply_markup=get_training_hub_keyboard(lang), parse_mode="Markdown")
-    await callback.answer()
 
 @router.callback_query(F.data == "hub_vocab")
 async def cb_hub_vocab(callback: CallbackQuery):
     """Подменю: Словарь и темы"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     level, category = await db.get_user_filters(callback.from_user.id)
     review_count = await db.get_review_words_count(callback.from_user.id)
     text = i18n.get("hub_vocab_title", lang)
     kb = get_vocab_hub_keyboard(lang, review_count=review_count, level=level, category=category)
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
-    await callback.answer()
 
 @router.callback_query(F.data == "hub_exams")
 async def cb_hub_exams(callback: CallbackQuery):
     """Подменю: Экзамены и тесты"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     text = i18n.get("hub_exams_title", lang)
     await show_or_update_window(callback, text, reply_markup=get_exams_hub_keyboard(lang), parse_mode="Markdown")
-    await callback.answer()
 
 @router.callback_query(F.data == "hub_settings")
 async def cb_hub_settings(callback: CallbackQuery):
     """Подменю: Настройки"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     notif_status = await db.get_user_notifications_status(callback.from_user.id)
     text = i18n.get("hub_settings_title", lang)
     kb = get_settings_hub_keyboard(lang, notifications_enabled=notif_status)
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
-    await callback.answer()
 
 @router.callback_query(F.data == "menu_lang")
 async def cb_menu_lang(callback: CallbackQuery):
     """Кнопка смены языка в меню"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     text = i18n.get("lang_select_title", lang)
     await show_or_update_window(callback, text, reply_markup=get_language_keyboard(), parse_mode="Markdown")
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("set_lang:"))
 async def cb_set_language(callback: CallbackQuery):
     """Установка выбранного языка"""
+    await callback.answer()
     selected_lang = callback.data.split(":")[1]
     await db.update_user_lang(callback.from_user.id, selected_lang)
     level, category = await db.get_user_filters(callback.from_user.id)
@@ -247,11 +248,11 @@ async def cb_set_language(callback: CallbackQuery):
         reply_markup=get_main_menu_keyboard(selected_lang),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data == "menu_stats")
 async def cb_menu_stats(callback: CallbackQuery):
     """Просмотр личной статистики и прогресса"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     stats = await db.get_user_stats(callback.from_user.id)
     lang_info = i18n.get_available_languages().get(lang, {"name": lang, "flag": ""})
@@ -345,7 +346,6 @@ async def cb_menu_stats(callback: CallbackQuery):
         reply_markup=get_stats_keyboard(lang, notifications_enabled=notif_enabled),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data == "menu_achievements")
 async def cb_menu_achievements(callback: CallbackQuery):

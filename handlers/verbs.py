@@ -34,13 +34,14 @@ async def send_verb_question(callback: CallbackQuery, lang: str, state: FSMConte
 @router.callback_query(F.data == "menu_verbs_sprint")
 async def cb_menu_verbs_sprint(callback: CallbackQuery, state: FSMContext):
     """Вход в спринт глаголов и предлогов"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_verb_question(callback, lang, state)
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("vs:"))
 async def cb_check_verb_answer(callback: CallbackQuery, state: FSMContext):
     """Проверка ответа в спринте глаголов"""
+    await callback.answer()
     parts = callback.data.split(":")
     is_correct = (parts[1] == "1")
     lang = await db.get_user_lang(callback.from_user.id)
@@ -65,4 +66,3 @@ async def cb_check_verb_answer(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_next_verbs_sprint_keyboard(lang),
         parse_mode="Markdown"
     )
-    await callback.answer()

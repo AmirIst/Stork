@@ -42,20 +42,21 @@ async def send_quiz_question(callback: CallbackQuery, lang: str):
 @router.callback_query(F.data == "menu_quiz")
 async def cb_menu_quiz(callback: CallbackQuery):
     """Старт квиза из главного меню"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_quiz_question(callback, lang)
-    await callback.answer()
 
 @router.callback_query(F.data == "next_quiz")
 async def cb_next_quiz(callback: CallbackQuery):
     """Следующий вопрос квиза"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     await send_quiz_question(callback, lang)
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("qz:"))
 async def cb_answer_quiz(callback: CallbackQuery):
     """Проверка ответа в квизе"""
+    await callback.answer()
     parts = callback.data.split(":")
     word_id = int(parts[1])
     is_correct = (parts[2] == "1")
@@ -65,7 +66,7 @@ async def cb_answer_quiz(callback: CallbackQuery):
 
     if not word_data:
         err_msg = "Ошибка вопроса" if lang == "ru" else "Question error"
-        await callback.answer(err_msg, show_alert=True)
+        await callback.message.answer(err_msg)
         return
 
     if is_correct:
@@ -93,4 +94,3 @@ async def cb_answer_quiz(callback: CallbackQuery):
         reply_markup=get_next_quiz_keyboard(word_id=word_id, lang=lang),
         parse_mode="Markdown"
     )
-    await callback.answer()

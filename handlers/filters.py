@@ -16,6 +16,7 @@ router = Router()
 @router.callback_query(F.data == "open_filters")
 async def cb_open_filters(callback: CallbackQuery):
     """Открыть меню выбора уровня и категорий"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     level, category = await db.get_user_filters(callback.from_user.id)
 
@@ -36,11 +37,11 @@ async def cb_open_filters(callback: CallbackQuery):
         reply_markup=get_filters_keyboard(level, category, lang=lang),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data == "choose_level")
 async def cb_choose_level(callback: CallbackQuery):
     """Показать список уровней сложности"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     level, _ = await db.get_user_filters(callback.from_user.id)
 
@@ -51,7 +52,6 @@ async def cb_choose_level(callback: CallbackQuery):
         reply_markup=get_level_selection_keyboard(level, lang=lang),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("set_lvl:"))
 async def cb_set_level(callback: CallbackQuery):
@@ -76,6 +76,7 @@ async def cb_set_level(callback: CallbackQuery):
 @router.callback_query(F.data == "choose_category")
 async def cb_choose_category(callback: CallbackQuery):
     """Показать список категорий слов"""
+    await callback.answer()
     lang = await db.get_user_lang(callback.from_user.id)
     _, category = await db.get_user_filters(callback.from_user.id)
 
@@ -86,7 +87,6 @@ async def cb_choose_category(callback: CallbackQuery):
         reply_markup=get_category_selection_keyboard(category, lang=lang),
         parse_mode="Markdown"
     )
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("set_cat:"))
 async def cb_set_category(callback: CallbackQuery):

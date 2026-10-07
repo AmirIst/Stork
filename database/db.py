@@ -25,6 +25,13 @@ FREE_DAILY_EXAM_LIMIT = 3
 async def init_db():
     """Инициализация базы данных SQLite, миграции и синхронизация словаря"""
     async with aiosqlite.connect(DB_PATH) as db:
+        # Настройки производительности SQLite (WAL-режим устраняет блокировки читателей и писателей)
+        await db.execute("PRAGMA journal_mode = WAL;")
+        await db.execute("PRAGMA synchronous = NORMAL;")
+        await db.execute("PRAGMA busy_timeout = 5000;")
+        await db.execute("PRAGMA cache_size = -64000;")
+        await db.execute("PRAGMA temp_store = MEMORY;")
+
         await db.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -129,6 +136,15 @@ async def init_db():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_ref_inviter ON referrals(inviter_id);")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_ref_referred ON referrals(referred_id);")
 
+        # Новые оптимизирующие индексы для мгновенной выборки слов, квизов и аналитики
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_words_level_cat ON words(level, category);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_words_category ON words(category);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_words_level ON words(level);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_progress_user_status_rev ON user_progress(user_id, status, last_reviewed);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_progress_user_status ON user_progress(user_id, status);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_translations_lang ON word_translations(lang);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_users_lang ON users(native_lang);")
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -203,6 +219,19 @@ async def init_db():
         await db.commit()
         logger.info(f"Словарь Stork ({len(INITIAL_WORDS)} слов) успешно синхронизирован с базой данных.")
 
+# Быстрый оперативный кэш в памяти (In-Memory Cache) для устранения микрофризов интерфейса
+_USER_LANG_CACHE: Dict[int, str] = {}
+_USER_FILTERS_CACHE: Dict[int, Tuple[str, str]] = {}
+
+def clear_user_cache(user_id: Optional[int] = None):
+    """Сброс оперативного кэша пользователя (для тестов или сброса)"""
+    if user_id is not None:
+        _USER_LANG_CACHE.pop(user_id, None)
+        _USER_FILTERS_CACHE.pop(user_id, None)
+    else:
+        _USER_LANG_CACHE.clear()
+        _USER_FILTERS_CACHE.clear()
+
 async def get_or_create_user(user_id: int, username: Optional[str], first_name: Optional[str]) -> Dict[str, Any]:
     """Получить или зарегистрировать пользователя"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -212,6 +241,8 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
             if row:
                 res = dict(row)
                 res["is_new"] = False
+                _USER_LANG_CACHE[user_id] = res.get("native_lang") or DEFAULT_LANGUAGE
+                _USER_FILTERS_CACHE[user_id] = (res.get("selected_level") or "ALL", res.get("selected_category") or "ALL")
                 return res
 
         await db.execute(
@@ -219,6 +250,8 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
             (user_id, username or "", first_name or "", DEFAULT_LANGUAGE)
         )
         await db.commit()
+        _USER_LANG_CACHE[user_id] = DEFAULT_LANGUAGE
+        _USER_FILTERS_CACHE[user_id] = ("ALL", "ALL")
         return {
             "user_id": user_id,
             "username": username or "",
@@ -235,6 +268,7 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
 
 async def update_user_lang(user_id: int, lang: str):
     """Обновить язык интерфейса пользователя"""
+    _USER_LANG_CACHE[user_id] = lang
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE users SET native_lang = ?, lang_selected = 1, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
@@ -252,31 +286,49 @@ async def set_user_lang_selected(user_id: int, selected: bool = True):
         await db.commit()
 
 async def get_user_lang(user_id: int) -> str:
-    """Получить язык интерфейса пользователя"""
+    """Получить язык интерфейса пользователя (сверхбыстро из памяти)"""
+    if user_id in _USER_LANG_CACHE:
+        return _USER_LANG_CACHE[user_id]
+
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT native_lang FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row and row[0]:
+                _USER_LANG_CACHE[user_id] = row[0]
                 return row[0]
+
+    _USER_LANG_CACHE[user_id] = DEFAULT_LANGUAGE
     return DEFAULT_LANGUAGE
 
 async def get_user_filters(user_id: int) -> Tuple[str, str]:
-    """Получить текущие фильтры пользователя: (level, category)"""
+    """Получить текущие фильтры пользователя: (level, category) (сверхбыстро из памяти)"""
+    if user_id in _USER_FILTERS_CACHE:
+        return _USER_FILTERS_CACHE[user_id]
+
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT selected_level, selected_category FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
-                return (row[0] or "ALL", row[1] or "ALL")
-    return ("ALL", "ALL")
+                res = (row[0] or "ALL", row[1] or "ALL")
+                _USER_FILTERS_CACHE[user_id] = res
+                return res
+
+    res = ("ALL", "ALL")
+    _USER_FILTERS_CACHE[user_id] = res
+    return res
 
 async def set_user_level(user_id: int, level: str):
     """Установить фильтр по уровню сложности (ALL, A1, A2, B1)"""
+    curr = _USER_FILTERS_CACHE.get(user_id, ("ALL", "ALL"))
+    _USER_FILTERS_CACHE[user_id] = (level, curr[1])
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE users SET selected_level = ? WHERE user_id = ?", (level, user_id))
         await db.commit()
 
 async def set_user_category(user_id: int, category: str):
     """Установить фильтр по категории слов (ALL или название категории)"""
+    curr = _USER_FILTERS_CACHE.get(user_id, ("ALL", "ALL"))
+    _USER_FILTERS_CACHE[user_id] = (curr[0], category)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE users SET selected_category = ? WHERE user_id = ?", (category, user_id))
         await db.commit()
