@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 import aiosqlite
+import database.connection  # Активирует подключение к Turso при наличии TURSO_DATABASE_URL
 from config import DB_PATH, DEFAULT_LANGUAGE, SUPER_ADMIN_IDS, ADMIN_IDS
 from database.words_data import INITIAL_WORDS, CATEGORY_METADATA
 from premium_config import (
