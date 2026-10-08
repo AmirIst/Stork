@@ -5,6 +5,7 @@
 stork_bot.db
 stork_bot.db-wal
 stork_bot.db-shm
+test_stork.db*
 backups/
 *.bak
 

@@ -1,0 +1,14 @@
+# Heroku slug ignore - исключает файлы из сборки на сервере
+tests/
+scripts/
+*.jpg
+*.jpeg
+*.png
+*.md
+LICENSE
+Dockerfile
+docker-compose.yml
+deploy.sh
+.pytest_cache/
+test_stork.db*
+backups/

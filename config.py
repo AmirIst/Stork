@@ -9,7 +9,11 @@ load_dotenv(BASE_DIR / ".env")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
-DB_PATH = BASE_DIR / "stork_bot.db"
+# В тестах используем изолированную базу test_stork.db, чтобы не засорять боевую базу
+if os.getenv("TESTING") or os.getenv("PYTEST_CURRENT_TEST"):
+    DB_PATH = BASE_DIR / "test_stork.db"
+else:
+    DB_PATH = BASE_DIR / "stork_bot.db"
 
 # Доступные языки интерфейса и изучения
 SUPPORTED_LANGUAGES = {
