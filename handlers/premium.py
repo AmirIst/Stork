@@ -350,7 +350,7 @@ async def process_successful_payment(message: Message):
             f"Thank you for supporting Stork!"
         )
 
-    # 3. Мгновенное оповещение администраторов
+    # 3. Мгновенное оповещение администраторов (только тем, у кого включены уведомления)
     username_str = f"@{message.from_user.username}" if message.from_user.username else (message.from_user.full_name or "Без имени")
     eur_approx = round(stars_amount * 0.02, 2)
     admin_alert = (
@@ -361,7 +361,8 @@ async def process_successful_payment(message: Message):
         f"⭐️ Сумма: *{stars_amount} Stars* (~{eur_approx} €)\n"
         f"📅 Время: {datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')}"
     )
-    for admin_id in ADMIN_IDS:
+    notify_admin_ids = await db.get_notification_admin_ids()
+    for admin_id in notify_admin_ids:
         try:
             await message.bot.send_message(admin_id, admin_alert, parse_mode="Markdown")
         except Exception as e:

@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 import aiosqlite
-from config import DB_PATH, DEFAULT_LANGUAGE
+from config import DB_PATH, DEFAULT_LANGUAGE, SUPER_ADMIN_IDS, ADMIN_IDS
 from database.words_data import INITIAL_WORDS, CATEGORY_METADATA
 from premium_config import (
     FREE_TRIAL_DAYS,
@@ -228,6 +228,26 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_payments_user ON payments_history(user_id);")
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS bot_admins (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT DEFAULT '',
+            role TEXT NOT NULL DEFAULT 'admin',
+            added_by INTEGER DEFAULT 0,
+            notify_payments INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        # Главные супер-админы (владельцы) всегда имеют статус super_admin
+        for sa_id in SUPER_ADMIN_IDS:
+            sa_uname = "Amirist1" if sa_id == 6725392176 else "AmirIst1807"
+            await db.execute("""
+                INSERT INTO bot_admins (user_id, username, role, added_by, notify_payments)
+                VALUES (?, ?, 'super_admin', ?, 1)
+                ON CONFLICT(user_id) DO UPDATE SET role = 'super_admin'
+            """, (sa_id, sa_uname, sa_id))
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -320,9 +340,21 @@ async def init_db():
                 await db.commit()
                 logger.info("Базовые промокоды Stork успешно инициализированы в таблице promo_codes.")
 
+        # Загрузка ролей администраторов и настроек оповещений в оперативный кэш
+        async with db.execute("SELECT user_id, role, notify_payments FROM bot_admins") as cursor:
+            for r in await cursor.fetchall():
+                _ACTIVE_ADMINS_CACHE[r[0]] = r[1]
+                _ADMIN_NOTIFY_CACHE[r[0]] = r[2]
+        for sa_id in SUPER_ADMIN_IDS:
+            _ACTIVE_ADMINS_CACHE[sa_id] = "super_admin"
+            if sa_id not in _ADMIN_NOTIFY_CACHE:
+                _ADMIN_NOTIFY_CACHE[sa_id] = 1
+
 # Быстрый оперативный кэш в памяти (In-Memory Cache) для устранения микрофризов интерфейса
 _USER_LANG_CACHE: Dict[int, str] = {}
 _USER_FILTERS_CACHE: Dict[int, Tuple[str, str]] = {}
+_ACTIVE_ADMINS_CACHE: Dict[int, str] = {}
+_ADMIN_NOTIFY_CACHE: Dict[int, int] = {}
 
 def clear_user_cache(user_id: Optional[int] = None):
     """Сброс оперативного кэша пользователя (для тестов или сброса)"""
@@ -332,6 +364,11 @@ def clear_user_cache(user_id: Optional[int] = None):
     else:
         _USER_LANG_CACHE.clear()
         _USER_FILTERS_CACHE.clear()
+        _ACTIVE_ADMINS_CACHE.clear()
+        _ADMIN_NOTIFY_CACHE.clear()
+        for sa_id in SUPER_ADMIN_IDS:
+            _ACTIVE_ADMINS_CACHE[sa_id] = "super_admin"
+            _ADMIN_NOTIFY_CACHE[sa_id] = 1
 
 async def get_or_create_user(user_id: int, username: Optional[str], first_name: Optional[str]) -> Dict[str, Any]:
     """Получить или зарегистрировать пользователя"""
@@ -1280,6 +1317,194 @@ async def get_broadcast_user_ids(audience: str = "all") -> List[int]:
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
             return [r[0] for r in rows]
+
+
+# ==============================================================================
+# СИСТЕМА РОЛЕЙ И УПРАВЛЕНИЯ АДМИНИСТРАТОРАМИ
+# ==============================================================================
+
+async def get_user_admin_role(user_id: int) -> Optional[str]:
+    """
+    Получить роль администратора:
+    - 'super_admin': Главный владелец (нельзя удалить или понизить, доступно все)
+    - 'admin': Администратор (статистика, пользователи, промокоды, бэкап, рассылка)
+    - 'analyst': Аналитик (только просмотр статистики)
+    - 'broadcaster': Менеджер рассылок (только рассылка)
+    - None: Нет доступа
+    """
+    if user_id in SUPER_ADMIN_IDS:
+        return "super_admin"
+
+    if user_id in _ACTIVE_ADMINS_CACHE:
+        return _ACTIVE_ADMINS_CACHE[user_id]
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT role, notify_payments FROM bot_admins WHERE user_id = ?", (user_id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                _ACTIVE_ADMINS_CACHE[user_id] = row[0]
+                _ADMIN_NOTIFY_CACHE[user_id] = row[1]
+                return row[0]
+    return None
+
+async def is_admin_user(user_id: int) -> bool:
+    """Проверка наличия любого админского доступа"""
+    role = await get_user_admin_role(user_id)
+    return role is not None
+
+async def is_super_admin_user(user_id: int) -> bool:
+    """Проверка, является ли пользователь главным владельцем (Super Admin)"""
+    return user_id in SUPER_ADMIN_IDS
+
+async def can_view_stats(user_id: int) -> bool:
+    """Право на просмотр аналитики и метрик"""
+    role = await get_user_admin_role(user_id)
+    return role in ("super_admin", "admin", "analyst")
+
+async def can_manage_users(user_id: int) -> bool:
+    """Право на поиск пользователей, выдачу и отзыв Premium"""
+    role = await get_user_admin_role(user_id)
+    return role in ("super_admin", "admin")
+
+async def can_manage_promos(user_id: int) -> bool:
+    """Право на создание и отключение промокодов"""
+    role = await get_user_admin_role(user_id)
+    return role in ("super_admin", "admin")
+
+async def can_download_backup(user_id: int) -> bool:
+    """Право на скачивание резервной копии базы данных"""
+    role = await get_user_admin_role(user_id)
+    return role in ("super_admin", "admin")
+
+async def can_broadcast(user_id: int) -> bool:
+    """Право на создание и отправку рассылок"""
+    role = await get_user_admin_role(user_id)
+    return role in ("super_admin", "admin", "broadcaster")
+
+async def can_manage_admins(user_id: int) -> bool:
+    """Право на добавление и удаление админов (строго главные супер-админы)"""
+    return user_id in SUPER_ADMIN_IDS
+
+async def get_all_admins() -> List[Dict[str, Any]]:
+    """Получить список всех администраторов с ролями и статусом оповещений"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM bot_admins 
+            ORDER BY CASE WHEN role = 'super_admin' THEN 0 ELSE 1 END, created_at ASC
+        """) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+async def add_bot_admin(
+    user_id: int,
+    username: str = "",
+    role: str = "admin",
+    added_by: int = 0
+) -> Tuple[bool, str]:
+    """
+    Добавить или изменить роль администратора.
+    Строгая защита: только супер-админы могут вызывать эту функцию!
+    Супер-админов изменить нельзя!
+    """
+    if added_by not in SUPER_ADMIN_IDS:
+        return False, "permission_denied"
+
+    if user_id in SUPER_ADMIN_IDS:
+        return False, "cannot_modify_super_admin"
+
+    if role not in ("admin", "analyst", "broadcaster"):
+        return False, "invalid_role"
+
+    clean_username = username.lstrip("@").strip()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO bot_admins (user_id, username, role, added_by, notify_payments)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = CASE WHEN excluded.username != '' THEN excluded.username ELSE bot_admins.username END,
+                role = excluded.role,
+                added_by = excluded.added_by
+        """, (user_id, clean_username, role, added_by))
+        await db.commit()
+
+    _ACTIVE_ADMINS_CACHE[user_id] = role
+    _ADMIN_NOTIFY_CACHE[user_id] = _ADMIN_NOTIFY_CACHE.get(user_id, 1)
+    if user_id not in ADMIN_IDS:
+        ADMIN_IDS.append(user_id)
+
+    return True, role
+
+async def remove_bot_admin(user_id: int, removed_by: int) -> Tuple[bool, str]:
+    """
+    Удалить администратора из команды.
+    Строгая защита: двух главных супер-админов удалить невозможно ни при каких условиях!
+    Только супер-админ может удалять других админов.
+    """
+    if removed_by not in SUPER_ADMIN_IDS:
+        return False, "permission_denied"
+
+    if user_id in SUPER_ADMIN_IDS:
+        return False, "cannot_remove_super_admin"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM bot_admins WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+    _ACTIVE_ADMINS_CACHE.pop(user_id, None)
+    _ADMIN_NOTIFY_CACHE.pop(user_id, None)
+    if user_id in ADMIN_IDS and user_id not in SUPER_ADMIN_IDS:
+        ADMIN_IDS.remove(user_id)
+
+    return True, "removed"
+
+async def toggle_admin_notifications(user_id: int) -> Tuple[bool, int]:
+    """Переключить получение уведомлений об оплатах (ВКЛ / ВЫКЛ)"""
+    current_status = await get_admin_notification_status(user_id)
+    new_status = 0 if current_status == 1 else 1
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT 1 FROM bot_admins WHERE user_id = ?", (user_id,)) as cur:
+            exists = await cur.fetchone()
+
+        if exists:
+            await db.execute("UPDATE bot_admins SET notify_payments = ? WHERE user_id = ?", (new_status, user_id))
+        else:
+            role = "super_admin" if user_id in SUPER_ADMIN_IDS else "admin"
+            await db.execute("""
+                INSERT INTO bot_admins (user_id, role, notify_payments)
+                VALUES (?, ?, ?)
+            """, (user_id, role, new_status))
+        await db.commit()
+
+    _ADMIN_NOTIFY_CACHE[user_id] = new_status
+    return True, new_status
+
+async def get_admin_notification_status(user_id: int) -> int:
+    """Получить статус уведомлений конкретного админа (1 - вкл, 0 - выкл)"""
+    if user_id in _ADMIN_NOTIFY_CACHE:
+        return _ADMIN_NOTIFY_CACHE[user_id]
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT notify_payments FROM bot_admins WHERE user_id = ?", (user_id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                _ADMIN_NOTIFY_CACHE[user_id] = row[0]
+                return row[0]
+
+    return 1
+
+async def get_notification_admin_ids() -> List[int]:
+    """Получить список ID админов, у которых включены оповещения об оплатах"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT user_id FROM bot_admins WHERE notify_payments = 1") as cur:
+            rows = await cur.fetchall()
+            ids = [r[0] for r in rows]
+
+    if not ids:
+        return [sa for sa in SUPER_ADMIN_IDS if _ADMIN_NOTIFY_CACHE.get(sa, 1) == 1]
+    return ids
+
 
 
 async def register_referral(inviter_id: int, referred_id: int) -> Optional[Dict[str, Any]]:

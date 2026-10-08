@@ -22,10 +22,21 @@ DEFAULT_LANGUAGE = "ru"
 BOT_NAME = "Stork"
 BOT_ICON = "🪶"
 
-# Telegram ID администраторов бота для доступа к панели управления
+# Два постоянных аккаунта владельца (главные супер-админы, которых нельзя удалить)
+SUPER_ADMIN_IDS = [6725392176, 190417869]
+
+# Список администраторов бота для доступа к панели управления
 _raw_admins = os.getenv("ADMIN_IDS", "6725392176,190417869")
 ADMIN_IDS = [int(x.strip()) for x in _raw_admins.split(",") if x.strip().isdigit()]
+for _sa in SUPER_ADMIN_IDS:
+    if _sa not in ADMIN_IDS:
+        ADMIN_IDS.append(_sa)
+
+def is_super_admin(user_id: int) -> bool:
+    """Проверка, является ли пользователь главным супер-админом (владельцем)"""
+    return user_id in SUPER_ADMIN_IDS
 
 def is_admin(user_id: int) -> bool:
-    """Проверка, является ли пользователь администратором бота"""
-    return user_id in ADMIN_IDS
+    """Синхронная базовая проверка наличия доступа к админ-панели"""
+    return user_id in SUPER_ADMIN_IDS or user_id in ADMIN_IDS
+

@@ -1571,6 +1571,7 @@ async def test_admin_stats_and_management():
     async with aiosqlite.connect(db.DB_PATH) as conn:
         await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
         await conn.execute("DELETE FROM payments_history WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM user_promo_activations WHERE user_id = ?", (test_uid,))
         await conn.execute("DELETE FROM promo_codes WHERE code LIKE 'TEST%'", ())
         await conn.commit()
 
@@ -1681,7 +1682,123 @@ async def test_admin_stats_and_management():
     async with aiosqlite.connect(db.DB_PATH) as conn:
         await conn.execute("DELETE FROM users WHERE user_id IN (?, ?)", (test_uid, test_uid2))
         await conn.execute("DELETE FROM payments_history WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM user_promo_activations WHERE user_id IN (?, ?)", (test_uid, test_uid2))
         await conn.commit()
+
+
+@pytest.mark.anyio
+async def test_admin_roles_and_notification_toggle():
+    """Тест ролевой модели (Super Admin, Admin, Analyst, Broadcaster) и тумблера уведомлений"""
+    from database import db
+    from config import SUPER_ADMIN_IDS
+    import aiosqlite
+
+    owner1 = SUPER_ADMIN_IDS[0]
+    owner2 = SUPER_ADMIN_IDS[1]
+
+    # 1. Защита супер-админов (владельцев): их нельзя удалить или изменить
+    assert await db.is_super_admin_user(owner1) is True
+    assert await db.is_super_admin_user(owner2) is True
+    assert await db.can_manage_admins(owner1) is True
+
+    # Попытка удалить супер-админа должна быть жестко заблокирована
+    del_ok, del_err = await db.remove_bot_admin(owner1, removed_by=owner2)
+    assert del_ok is False
+    assert del_err == "cannot_remove_super_admin"
+
+    # Попытка понизить супер-админа должна быть заблокирована
+    mod_ok, mod_err = await db.add_bot_admin(owner1, role="analyst", added_by=owner2)
+    assert mod_ok is False
+    assert mod_err == "cannot_modify_super_admin"
+
+    # 2. Не-супер-админ не может добавлять/удалять администраторов
+    stranger_id = 999111222
+    add_fail_ok, add_fail_err = await db.add_bot_admin(777111, role="admin", added_by=stranger_id)
+    assert add_fail_ok is False
+    assert add_fail_err == "permission_denied"
+
+    rem_fail_ok, rem_fail_err = await db.remove_bot_admin(777111, removed_by=stranger_id)
+    assert rem_fail_ok is False
+    assert rem_fail_err == "permission_denied"
+
+    # 3. Назначение роли Analyst (только просмотр статистики)
+    analyst_uid = 555111
+    succ, r_name = await db.add_bot_admin(analyst_uid, username="test_analyst", role="analyst", added_by=owner1)
+    assert succ is True
+    assert r_name == "analyst"
+    assert await db.get_user_admin_role(analyst_uid) == "analyst"
+
+    assert await db.can_view_stats(analyst_uid) is True
+    assert await db.can_manage_users(analyst_uid) is False
+    assert await db.can_manage_promos(analyst_uid) is False
+    assert await db.can_download_backup(analyst_uid) is False
+    assert await db.can_broadcast(analyst_uid) is False
+    assert await db.can_manage_admins(analyst_uid) is False
+
+    # 4. Назначение роли Broadcaster (только рассылка сообщений)
+    broadcaster_uid = 555222
+    succ_b, r_b = await db.add_bot_admin(broadcaster_uid, username="test_broadcaster", role="broadcaster", added_by=owner1)
+    assert succ_b is True
+    assert r_b == "broadcaster"
+    assert await db.get_user_admin_role(broadcaster_uid) == "broadcaster"
+
+    assert await db.can_broadcast(broadcaster_uid) is True
+    assert await db.can_view_stats(broadcaster_uid) is False
+    assert await db.can_manage_users(broadcaster_uid) is False
+    assert await db.can_manage_promos(broadcaster_uid) is False
+    assert await db.can_download_backup(broadcaster_uid) is False
+    assert await db.can_manage_admins(broadcaster_uid) is False
+
+    # 5. Назначение роли Admin (все права, кроме управления админами)
+    admin_uid = 555333
+    succ_a, r_a = await db.add_bot_admin(admin_uid, username="test_admin", role="admin", added_by=owner1)
+    assert succ_a is True
+    assert r_a == "admin"
+    assert await db.get_user_admin_role(admin_uid) == "admin"
+
+    assert await db.can_view_stats(admin_uid) is True
+    assert await db.can_manage_users(admin_uid) is True
+    assert await db.can_manage_promos(admin_uid) is True
+    assert await db.can_download_backup(admin_uid) is True
+    assert await db.can_broadcast(admin_uid) is True
+    assert await db.can_manage_admins(admin_uid) is False
+
+    # 6. Проверка списка всех админов
+    all_adm = await db.get_all_admins()
+    admin_ids_in_list = [a["user_id"] for a in all_adm]
+    assert owner1 in admin_ids_in_list
+    assert owner2 in admin_ids_in_list
+    assert analyst_uid in admin_ids_in_list
+    assert broadcaster_uid in admin_ids_in_list
+    assert admin_uid in admin_ids_in_list
+
+    # 7. Проверка тумблера оповещений об оплатах (ВКЛ / ВЫКЛ)
+    assert await db.get_admin_notification_status(analyst_uid) == 1
+    assert analyst_uid in await db.get_notification_admin_ids()
+
+    # Выключаем оповещения
+    _, new_val = await db.toggle_admin_notifications(analyst_uid)
+    assert new_val == 0
+    assert await db.get_admin_notification_status(analyst_uid) == 0
+    assert analyst_uid not in await db.get_notification_admin_ids()
+
+    # Включаем обратно
+    _, back_val = await db.toggle_admin_notifications(analyst_uid)
+    assert back_val == 1
+    assert await db.get_admin_notification_status(analyst_uid) == 1
+    assert analyst_uid in await db.get_notification_admin_ids()
+
+    # 8. Удаление администратора
+    rem_ok, rem_status = await db.remove_bot_admin(analyst_uid, removed_by=owner1)
+    assert rem_ok is True
+    assert rem_status == "removed"
+    assert await db.get_user_admin_role(analyst_uid) is None
+    assert await db.is_admin_user(analyst_uid) is False
+
+    # Чистка остальных временных админов
+    await db.remove_bot_admin(broadcaster_uid, removed_by=owner1)
+    await db.remove_bot_admin(admin_uid, removed_by=owner1)
+
 
 
 
