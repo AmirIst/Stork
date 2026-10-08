@@ -297,37 +297,44 @@ async def init_db():
 
         await db.commit()
 
-        # Синхронизация слов из INITIAL_WORDS
-        logger.info(f"Синхронизация {len(INITIAL_WORDS)} слов с базой данных...")
-        for item in INITIAL_WORDS:
-            async with db.execute("SELECT id FROM words WHERE word = ?", (item["word"],)) as cursor:
-                row = await cursor.fetchone()
+        # Синхронизация слов из INITIAL_WORDS (пропускаем, если база уже заполнена)
+        async with db.execute("SELECT COUNT(*) FROM words") as cursor:
+            words_cnt_row = await cursor.fetchone()
+            current_words_cnt = words_cnt_row[0] if words_cnt_row else 0
 
-            if not row:
-                async with db.execute(
-                    "INSERT INTO words (word, article, plural, level, category, example_de) VALUES (?, ?, ?, ?, ?, ?)",
-                    (item["word"], item["article"], item["plural"], item["level"], item["category"], item["example_de"])
-                ) as cursor:
-                    word_id = cursor.lastrowid
-            else:
-                word_id = row[0]
-                # Обновляем метаданные если изменились
-                await db.execute(
-                    "UPDATE words SET article = ?, plural = ?, level = ?, category = ?, example_de = ? WHERE id = ?",
-                    (item["article"], item["plural"], item["level"], item["category"], item["example_de"], word_id)
-                )
+        if current_words_cnt >= len(INITIAL_WORDS):
+            logger.info(f"Словарь Stork ({current_words_cnt} слов) уже синхронизирован с базой данных.")
+        else:
+            logger.info(f"Синхронизация {len(INITIAL_WORDS)} слов с базой данных (сейчас {current_words_cnt})...")
+            for item in INITIAL_WORDS:
+                async with db.execute("SELECT id FROM words WHERE word = ?", (item["word"],)) as cursor:
+                    row = await cursor.fetchone()
 
-            for lang, tr_data in item.get("translations", {}).items():
-                await db.execute("""
-                    INSERT INTO word_translations (word_id, lang, translation, example_tr)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(word_id, lang) DO UPDATE SET
-                        translation = excluded.translation,
-                        example_tr = excluded.example_tr
-                """, (word_id, lang, tr_data["tr"], tr_data["example_tr"]))
+                if not row:
+                    async with db.execute(
+                        "INSERT INTO words (word, article, plural, level, category, example_de) VALUES (?, ?, ?, ?, ?, ?)",
+                        (item["word"], item["article"], item["plural"], item["level"], item["category"], item["example_de"])
+                    ) as cursor:
+                        word_id = cursor.lastrowid
+                else:
+                    word_id = row[0]
+                    # Обновляем метаданные если изменились
+                    await db.execute(
+                        "UPDATE words SET article = ?, plural = ?, level = ?, category = ?, example_de = ? WHERE id = ?",
+                        (item["article"], item["plural"], item["level"], item["category"], item["example_de"], word_id)
+                    )
 
-        await db.commit()
-        logger.info(f"Словарь Stork ({len(INITIAL_WORDS)} слов) успешно синхронизирован с базой данных.")
+                for lang, tr_data in item.get("translations", {}).items():
+                    await db.execute("""
+                        INSERT INTO word_translations (word_id, lang, translation, example_tr)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(word_id, lang) DO UPDATE SET
+                            translation = excluded.translation,
+                            example_tr = excluded.example_tr
+                    """, (word_id, lang, tr_data["tr"], tr_data["example_tr"]))
+
+            await db.commit()
+            logger.info(f"Словарь Stork ({len(INITIAL_WORDS)} слов) успешно синхронизирован с базой данных.")
 
         # Инициализация базовых промокодов, если таблица пуста
         async with db.execute("SELECT COUNT(*) FROM promo_codes") as cursor:
