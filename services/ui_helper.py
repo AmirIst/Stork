@@ -52,11 +52,19 @@ async def show_or_update_window(
         except Exception as e:
             logger.debug(f"Не удалось удалить предыдущее окно: {e}")
 
-        return await callback.message.answer(
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode=parse_mode
-        )
+        try:
+            return await callback.message.answer(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+        except Exception as e:
+            logger.warning(f"Ошибка отправки с parse_mode: {e}. Повторная отправка без parse_mode...")
+            return await callback.message.answer(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=None
+            )
     else:
         try:
             return await callback.message.edit_text(
@@ -67,8 +75,23 @@ async def show_or_update_window(
         except Exception as e:
             if "message is not modified" in str(e).lower():
                 return callback.message
-            return await callback.message.answer(
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode
-            )
+            try:
+                return await callback.message.answer(
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+            except Exception as e2:
+                logger.warning(f"Ошибка разметки в show_or_update_window: {e2}. Отправка без parse_mode...")
+                try:
+                    return await callback.message.edit_text(
+                        text=text,
+                        reply_markup=reply_markup,
+                        parse_mode=None
+                    )
+                except Exception:
+                    return await callback.message.answer(
+                        text=text,
+                        reply_markup=reply_markup,
+                        parse_mode=None
+                    )

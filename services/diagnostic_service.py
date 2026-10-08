@@ -29,7 +29,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_1",
         "level": "A1",
         "topic": "articles",
-        "question": "Wähle den richtigen Artikel:\n\n___ Tisch ist sehr groß und modern.",
+        "question": "Wähle den richtigen Artikel:\n\n[...] Tisch ist sehr groß und modern.",
         "options": ["Der", "Die", "Das", "Den"],
         "correct_index": 0,
         "explanation": "Tisch ist maskulin: der Tisch."
@@ -38,7 +38,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_2",
         "level": "A1",
         "topic": "verb_conjugation",
-        "question": "Ergänze das Verb:\n\nIch ___ aus Berlin und wohne jetzt in Hamburg.",
+        "question": "Ergänze das Verb:\n\nIch [...] aus Berlin und wohne jetzt in Hamburg.",
         "options": ["kommst", "komme", "kommt", "kommen"],
         "correct_index": 1,
         "explanation": "Konjugation für 'ich': komme."
@@ -47,7 +47,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_3",
         "level": "A2",
         "topic": "preposition_dativ",
-        "question": "Ergänze die Präposition und den Artikel:\n\nWir treffen uns um 18 Uhr vor ___ Kino.",
+        "question": "Ergänze die Präposition und den Artikel:\n\nWir treffen uns um 18 Uhr vor [...] Kino.",
         "options": ["das", "dem", "den", "der"],
         "correct_index": 1,
         "explanation": "Vor + Dativ (Ort/Wo?): vor dem Kino (das Kino -> dem)."
@@ -56,7 +56,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_4",
         "level": "A2",
         "topic": "perfekt_partizip",
-        "question": "Welche Form ist richtig?\n\nGestern habe ich einen sehr interessanten Film ___.",
+        "question": "Welche Form ist richtig?\n\nGestern habe ich einen sehr interessanten Film [...].",
         "options": ["gesehen", "geseht", "sehen", "gehesehen"],
         "correct_index": 0,
         "explanation": "Perfekt von sehen: hat gesehen."
@@ -65,7 +65,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_5",
         "level": "A2",
         "topic": "modal_verbs_word_order",
-        "question": "Wähle die richtige Satzstruktur:\n\nMorgen ___ ich sehr früh aufstehen.",
+        "question": "Wähle die richtige Satzstruktur:\n\nMorgen [...] ich sehr früh aufstehen.",
         "options": ["will", "muss", "habe", "kannst"],
         "correct_index": 1,
         "explanation": "Modalverb auf Position 2: 'Morgen muss ich... aufstehen'."
@@ -74,7 +74,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_6",
         "level": "B1",
         "topic": "subordinate_clause_weil",
-        "question": "Wähle das richtige Satzende:\n\nEr kann heute nicht zur Arbeit kommen, weil er krank ___.",
+        "question": "Wähle das richtige Satzende:\n\nEr kann heute nicht zur Arbeit kommen, weil er krank [...].",
         "options": ["ist", "sein", "wird", "warum"],
         "correct_index": 0,
         "explanation": "Nebensatz mit 'weil': das konjugierte Verb steht am Ende (krank ist)."
@@ -83,7 +83,7 @@ EXPRESS_QUESTIONS: List[Dict[str, Any]] = [
         "id": "exp_7",
         "level": "B1",
         "topic": "connectors_obwohl",
-        "question": "Welcher Konnektor passt?\n\n___ es stark geregnet hat, haben wir einen Spaziergang im Park gemacht.",
+        "question": "Welcher Konnektor passt?\n\n[...] es stark geregnet hat, haben wir einen Spaziergang im Park gemacht.",
         "options": ["Weil", "Obwohl", "Deshalb", "Trotz"],
         "correct_index": 1,
         "explanation": "'Obwohl' drückt einen Gegengrund aus (Konzessivsatz)."
@@ -216,7 +216,7 @@ GOETHE_B1_LESEN_TASKS: List[Dict[str, Any]] = [
         "title": "Teil 4: Grammatikbaustein im Kontext",
         "text": (
             "Herr Müller hat sich entschieden, mit dem Fahrrad zur Arbeit zu fahren, "
-            "___ er etwas für seine Gesundheit tun möchte und die Parkplätze in der Stadt zu teuer sind."
+            "[...] er etwas für seine Gesundheit tun möchte und die Parkplätze in der Stadt zu teuer sind."
         ),
         "question": "Welche Konjunktion passt grammatikalisch und logisch in die Lücke?",
         "options": ["obwohl", "weil", "trotzdem", "denn"],

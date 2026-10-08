@@ -407,7 +407,7 @@ async def render_goethe_lesen_screen(callback: CallbackQuery, task_idx: int, lan
             f"📖 *Модуль 1: Lesen (Чтение)* • Задание {task_idx + 1} из {total}\n"
             f"{progress}\n\n"
             f"📌 *{task['title']}*\n\n"
-            f"_{task['text']}_\n\n"
+            f"{task['text']}\n\n"
             f"❓ *{task['question']}*\n\n"
             f"Выбери правильный ответ ниже 👇"
         )
@@ -416,7 +416,7 @@ async def render_goethe_lesen_screen(callback: CallbackQuery, task_idx: int, lan
             f"📖 *Module 1: Lesen (Reading)* • Task {task_idx + 1} of {total}\n"
             f"{progress}\n\n"
             f"📌 *{task['title']}*\n\n"
-            f"_{task['text']}_\n\n"
+            f"{task['text']}\n\n"
             f"❓ *{task['question']}*\n\n"
             f"Select the correct answer below 👇"
         )
@@ -449,14 +449,17 @@ async def cb_answer_goethe_lesen(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     task_idx = int(parts[1])
     opt_idx = int(parts[2])
+    lang = await db.get_user_lang(callback.from_user.id)
 
+    # Если пришел ответ на устаревший вопрос, принудительно обновляем окно до актуального вопроса
     if task_idx != current_idx:
+        if current_idx < len(GOETHE_B1_LESEN_TASKS):
+            await render_goethe_lesen_screen(callback, task_idx=current_idx, lang=lang)
         await callback.answer()
         return
 
     lesen_answers.append(opt_idx)
     next_idx = current_idx + 1
-    lang = await db.get_user_lang(callback.from_user.id)
 
     if next_idx < len(GOETHE_B1_LESEN_TASKS):
         await state.update_data(lesen_current=next_idx, lesen_answers=lesen_answers)
@@ -466,6 +469,15 @@ async def cb_answer_goethe_lesen(callback: CallbackQuery, state: FSMContext):
         # Переход к Модулю 2: Hören
         await state.update_data(lesen_answers=lesen_answers, hoeren_current=0)
         await state.set_state(DiagnosticState.goethe_hoeren)
+        transition_text = (
+            "✅ *Модуль 1 (Lesen) завершен!*\n\nПереходим к *Модулю 2: Hören (Аудирование)* 👇"
+            if lang == "ru"
+            else "✅ *Module 1 (Lesen) completed!*\n\nMoving to *Module 2: Hören (Listening)* 👇"
+        )
+        try:
+            await callback.message.edit_text(transition_text, reply_markup=None, parse_mode="Markdown")
+        except Exception:
+            pass
         await callback.answer("Модуль Lesen завершен! Переходим к Hören." if lang == "ru" else "Lesen completed! Moving to Hören.")
         await send_goethe_hoeren_task(callback.message, state, task_idx=0, lang=lang)
 
@@ -533,6 +545,11 @@ async def cb_answer_goethe_hoeren(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
     hoeren_answers.append(opt_idx)
     next_idx = current_idx + 1
     lang = await db.get_user_lang(callback.from_user.id)
@@ -545,6 +562,15 @@ async def cb_answer_goethe_hoeren(callback: CallbackQuery, state: FSMContext):
         # Переход к Модулю 3: Schreiben
         await state.update_data(hoeren_answers=hoeren_answers)
         await state.set_state(DiagnosticState.goethe_schreiben)
+        transition_text = (
+            "✅ *Модуль 2 (Hören) завершен!*\n\nПереходим к *Модулю 3: Schreiben (Письменная часть)* 👇"
+            if lang == "ru"
+            else "✅ *Module 2 (Hören) completed!*\n\nMoving to *Module 3: Schreiben (Writing)* 👇"
+        )
+        try:
+            await callback.message.edit_text(transition_text, reply_markup=None, parse_mode="Markdown")
+        except Exception:
+            pass
         await callback.answer("Модуль Hören завершен! Переходим к Schreiben." if lang == "ru" else "Hören completed! Moving to Schreiben.")
         await render_goethe_schreiben_screen(callback.message, lang=lang)
 
