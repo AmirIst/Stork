@@ -1330,6 +1330,197 @@ async def test_diagnostic_database_persistence():
     assert profile["last_diagnostic_id"] == diag_id
 
 
+def test_telc_b1_tasks_integrity():
+    """Проверка структуры и баланса баллов экзамена telc Deutsch B1 (ровно 300 баллов)"""
+    from services.diagnostic_service import (
+        TELC_B1_LESEN_TASKS,
+        TELC_B1_SPRACHBAUSTEINE_TASKS,
+        TELC_B1_HOEREN_TASKS,
+        TELC_B1_SCHREIBEN_PROMPT,
+        TELC_B1_SPRECHEN_TASKS
+    )
+
+    # 1. Leseverstehen: 3 задания x 25 = 75 баллов
+    assert len(TELC_B1_LESEN_TASKS) == 3
+    lesen_pts = sum(t["points"] for t in TELC_B1_LESEN_TASKS)
+    assert lesen_pts == 75
+
+    # 2. Sprachbausteine: 5 заданий x 6 = 30 баллов
+    assert len(TELC_B1_SPRACHBAUSTEINE_TASKS) == 5
+    sb_pts = sum(t["points"] for t in TELC_B1_SPRACHBAUSTEINE_TASKS)
+    assert sb_pts == 30
+
+    # 3. Hörverstehen: 2 аудиоситуации = 75 баллов (38 + 37)
+    assert len(TELC_B1_HOEREN_TASKS) == 2
+    hoe_pts = sum(t["points"] for t in TELC_B1_HOEREN_TASKS)
+    assert hoe_pts == 75
+
+    # 4. Schriftlicher Ausdruck (Brief) = 45 баллов
+    schreiben_pts = 45
+
+    # Итог Schriftliche Prüfung: 75 + 30 + 75 + 45 = 225 баллов
+    schriftlich_total = lesen_pts + sb_pts + hoe_pts + schreiben_pts
+    assert schriftlich_total == 225
+
+    # 5. Mündliche Prüfung: 3 части = 75 баллов (15 + 30 + 30)
+    sprechen_pts = sum(t["points"] for t in TELC_B1_SPRECHEN_TASKS.values())
+    assert sprechen_pts == 75
+
+    # Общий итог telc B1: 225 + 75 = 300 баллов
+    assert schriftlich_total + sprechen_pts == 300
+
+
+def test_telc_b1_deterministic_scoring():
+    """Проверка детерминированного подсчета объективных частей telc B1"""
+    from services.diagnostic_service import (
+        TELC_B1_LESEN_TASKS,
+        score_telc_lesen_module,
+        TELC_B1_SPRACHBAUSTEINE_TASKS,
+        score_telc_sprachbausteine_module,
+        TELC_B1_HOEREN_TASKS,
+        score_telc_hoeren_module
+    )
+
+    # 1. Lesen
+    perfect_lesen = [t["correct_index"] for t in TELC_B1_LESEN_TASKS]
+    score_l, errs_l = score_telc_lesen_module(perfect_lesen)
+    assert score_l == 75
+    assert len(errs_l) == 0
+
+    zero_lesen = [999 for _ in TELC_B1_LESEN_TASKS]
+    score_l0, errs_l0 = score_telc_lesen_module(zero_lesen)
+    assert score_l0 == 0
+    assert len(errs_l0) == 3
+
+    # 2. Sprachbausteine
+    perfect_sb = [t["correct_index"] for t in TELC_B1_SPRACHBAUSTEINE_TASKS]
+    score_sb, errs_sb = score_telc_sprachbausteine_module(perfect_sb)
+    assert score_sb == 30
+    assert len(errs_sb) == 0
+
+    partial_sb = [perfect_sb[0], 999, perfect_sb[2], 999, perfect_sb[4]]
+    score_sb_part, errs_sb_part = score_telc_sprachbausteine_module(partial_sb)
+    assert score_sb_part == 18  # 3 x 6
+    assert len(errs_sb_part) == 2
+
+    # 3. Hören
+    perfect_hoe = [t["correct_index"] for t in TELC_B1_HOEREN_TASKS]
+    score_h, errs_h = score_telc_hoeren_module(perfect_hoe)
+    assert score_h == 75
+    assert len(errs_h) == 0
+
+
+def test_calculate_telc_readiness_overall_grades():
+    """Проверка официальной градации оценок telc B1 (Sehr gut, Gut, Befriedigend, Ausreichend, Teilweise, Nicht bestanden)"""
+    from services.diagnostic_service import calculate_telc_readiness_overall
+
+    # Grade 1 (Sehr gut: >= 270 и обе части сданы)
+    st1, sch1, m1, tot1, gr1, w1 = calculate_telc_readiness_overall(
+        lesen_score=75, sprachbausteine_score=30, hoeren_score=75, schreiben_score=40, sprechen_score=70
+    )
+    assert tot1 == 290
+    assert gr1 == "1 (Sehr gut)"
+    assert st1 == "STRONG"
+
+    # Grade 2 (Gut: 240 - 269.5)
+    st2, sch2, m2, tot2, gr2, w2 = calculate_telc_readiness_overall(
+        lesen_score=60, sprachbausteine_score=24, hoeren_score=60, schreiben_score=36, sprechen_score=65
+    )
+    assert tot2 == 245
+    assert gr2 == "2 (Gut)"
+    assert st2 == "STRONG"
+
+    # Grade 3 (Befriedigend: 210 - 239.5)
+    st3, sch3, m3, tot3, gr3, w3 = calculate_telc_readiness_overall(
+        lesen_score=50, sprachbausteine_score=18, hoeren_score=50, schreiben_score=32, sprechen_score=60
+    )
+    assert tot3 == 210
+    assert gr3 == "3 (Befriedigend)"
+    assert st3 == "LIKELY_READY"
+
+    # Grade 4 (Ausreichend / Bestanden: 180 - 209.5)
+    st4, sch4, m4, tot4, gr4, w4 = calculate_telc_readiness_overall(
+        lesen_score=45, sprachbausteine_score=18, hoeren_score=45, schreiben_score=30, sprechen_score=45
+    )
+    assert tot4 == 183
+    assert sch4 >= 135
+    assert m4 >= 45
+    assert gr4 == "4 (Ausreichend / Bestanden)"
+    assert st4 == "LIKELY_READY"
+
+    # Teilweise bestanden (только schriftlich >= 135, но muendlich < 45)
+    st5, sch5, m5, tot5, gr5, w5 = calculate_telc_readiness_overall(
+        lesen_score=50, sprachbausteine_score=24, hoeren_score=50, schreiben_score=30, sprechen_score=35
+    )
+    assert sch5 == 154  # >= 135
+    assert m5 == 35    # < 45
+    assert gr5 == "Teilweise bestanden (nur schriftlich)"
+    assert st5 == "NEAR_PASS"
+
+    # Teilweise bestanden (только muendlich >= 45, но schriftlich < 135)
+    st6, sch6, m6, tot6, gr6, w6 = calculate_telc_readiness_overall(
+        lesen_score=30, sprachbausteine_score=12, hoeren_score=35, schreiben_score=20, sprechen_score=55
+    )
+    assert sch6 == 97   # < 135
+    assert m6 == 55    # >= 45
+    assert gr6 == "Teilweise bestanden (nur mündlich)"
+    assert st6 == "NEAR_PASS"
+
+    # Nicht bestanden (обе части ниже порога)
+    st7, sch7, m7, tot7, gr7, w7 = calculate_telc_readiness_overall(
+        lesen_score=25, sprachbausteine_score=6, hoeren_score=25, schreiben_score=15, sprechen_score=30
+    )
+    assert tot7 == 101
+    assert gr7 == "Nicht bestanden"
+    assert st7 == "NOT_READY"
+
+
+@pytest.mark.anyio
+async def test_telc_diagnostic_persistence():
+    """Тест сохранения и получения результатов telc B1 с модулем Sprachbausteine"""
+    from database import db
+    import aiosqlite
+
+    test_uid = 999333222
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM diagnostic_history WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM user_learning_profile WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+    await db.get_or_create_user(test_uid, "telc_tester", "Lisa")
+
+    diag_id = await db.save_diagnostic_result(
+        user_id=test_uid,
+        exam_type="telc_b1",
+        exam_version="telc_b1_v1",
+        diagnostic_type="readiness",
+        cefr_estimate="B1",
+        readiness_status="LIKELY_READY",
+        overall_diagnostic_score=78,
+        lesen_score=60,
+        hoeren_score=60,
+        schreiben_score=35,
+        sprechen_score=55,
+        sprachbausteine_score=24,
+        raw_rubric_scores={"telc_grade": "3 (Befriedigend)", "total_points": 234},
+        module_results={"lesen": 60, "sprachbausteine": 24, "hoeren": 60, "schreiben": 35, "sprechen": 55},
+        weak_points=[{"topic": "Sprachbaustein 2", "explanation": "Richtung zu Städten erfordert nach"}],
+        strengths=["Starke Mündliche Prüfung"],
+        recommendations=[{"action_id": "train_cases", "title": "Падежи"}]
+    )
+    assert diag_id > 0
+
+    latest = await db.get_latest_diagnostic(test_uid, exam_type="telc_b1")
+    assert latest is not None
+    assert latest["exam_type"] == "telc_b1"
+    assert latest["sprachbausteine_score"] == 24
+    assert latest["lesen_score"] == 60
+    assert latest["overall_diagnostic_score"] == 78
+    assert latest["raw_rubric_scores"]["telc_grade"] == "3 (Befriedigend)"
+
+
+
 
 
 

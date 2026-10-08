@@ -26,7 +26,22 @@ from services.diagnostic_service import (
     EXPRESS_VERSION,
     GOETHE_B1_VERSION,
     RUBRIC_WRITING_VERSION,
-    RUBRIC_SPEAKING_VERSION
+    RUBRIC_SPEAKING_VERSION,
+    TELC_B1_VERSION,
+    RUBRIC_TELC_WRITING_VERSION,
+    RUBRIC_TELC_SPEAKING_VERSION,
+    TELC_B1_LESEN_TASKS,
+    score_telc_lesen_module,
+    TELC_B1_SPRACHBAUSTEINE_INTRO,
+    TELC_B1_SPRACHBAUSTEINE_TASKS,
+    score_telc_sprachbausteine_module,
+    TELC_B1_HOEREN_TASKS,
+    score_telc_hoeren_module,
+    TELC_B1_SCHREIBEN_PROMPT,
+    evaluate_telc_schreiben_module,
+    TELC_B1_SPRECHEN_TASKS,
+    evaluate_telc_sprechen_module,
+    calculate_telc_readiness_overall
 )
 from services.ai_tutor import transcribe_voice
 from services.tts import synthesize_speech, VOICE_MALE
@@ -38,6 +53,9 @@ from keyboards.inline import (
     get_goethe_intro_keyboard,
     get_goethe_question_keyboard,
     get_goethe_cancel_keyboard,
+    get_telc_intro_keyboard,
+    get_telc_question_keyboard,
+    get_telc_cancel_keyboard,
     get_diagnostic_recommendations_keyboard,
     get_main_menu_keyboard
 )
@@ -55,6 +73,15 @@ class DiagnosticState(StatesGroup):
     goethe_sprechen_part2 = State()
     goethe_sprechen_part3 = State()
     goethe_evaluating = State()
+    telc_intro = State()
+    telc_lesen = State()
+    telc_sprachbausteine = State()
+    telc_hoeren = State()
+    telc_schreiben = State()
+    telc_sprechen_part1 = State()
+    telc_sprechen_part2 = State()
+    telc_sprechen_part3 = State()
+    telc_evaluating = State()
 
 def get_mini_progress(current: int, total: int) -> str:
     filled = min(total, max(1, current))
@@ -142,13 +169,14 @@ async def cb_my_diagnostic_profile(callback: CallbackQuery):
 
     if not latest:
         msg = (
-            "У тебя пока нет пройденных тестов. Пройди экспресс-тест или Goethe B1 Readiness Test!"
+            "У тебя пока нет пройденных тестов. Пройди экспресс-тест, Goethe B1 или telc B1!"
             if lang == "ru"
-            else "You haven't completed any diagnostics yet. Try Express Check or Goethe B1 Readiness Test!"
+            else "You haven't completed any diagnostics yet. Try Express Check, Goethe B1, or telc B1!"
         )
         await callback.answer(msg, show_alert=True)
         return
 
+    exam_type = latest.get("exam_type", "goethe_b1")
     status = latest.get("readiness_status", "NOT_READY")
     cefr = latest.get("cefr_estimate", "B1")
     overall = latest.get("overall_diagnostic_score", 0)
@@ -156,6 +184,7 @@ async def cb_my_diagnostic_profile(callback: CallbackQuery):
     hoe = latest.get("hoeren_score", 0)
     sch = latest.get("schreiben_score", 0)
     spr = latest.get("sprechen_score", 0)
+    sb = latest.get("sprachbausteine_score", 0)
 
     status_labels_ru = {
         "STRONG": "🟢 Готов к экзамену (Отличный результат)",
@@ -172,51 +201,111 @@ async def cb_my_diagnostic_profile(callback: CallbackQuery):
     status_label = status_labels_ru.get(status, status) if lang == "ru" else status_labels_en.get(status, status)
 
     weak_points = latest.get("weak_points", [])
-    recommendations = latest.get("recommendations", [])
+    raw_rubric = latest.get("raw_rubric_scores", {})
 
-    if lang == "ru":
-        text = (
-            f"📊 *Твой диагностический профиль Stork*\n\n"
-            f"🎯 *Оценка уровня:* {cefr}\n"
-            f"🏆 *Диагностический балл Stork:* {overall}/100\n"
-            f"📌 *Статус готовности:* {status_label}\n\n"
-            f"📋 *Баллы по модулям (порог сдачи: от 60/100):*\n"
-            f"• 📖 Lesen: *{les}/100* {'✅' if les >= 60 else '❌'}\n"
-            f"• 🎧 Hören: *{hoe}/100* {'✅' if hoe >= 60 else '❌'}\n"
-            f"• ✍️ Schreiben: *{sch}/100* {'✅' if sch >= 60 else '❌'}\n"
-            f"• 🗣️ Sprechen: *{spr}/100* {'✅' if spr >= 60 else '❌'}\n\n"
-        )
-        if weak_points:
-            text += "🔍 *Обнаруженные слабые места:*\n"
-            for wp in weak_points[:3]:
-                exp = wp.get("explanation_ru") or wp.get("topic") or ""
-                text += f"• {exp}\n"
-            text += "\n"
-        text += "👉 Нажми на кнопку ниже, чтобы перейти сразу к нужной тренировке:"
+    if exam_type == "telc_b1":
+        schriftlich = les + sb + hoe + sch
+        muendlich = spr
+        total_pts = schriftlich + muendlich
+        telc_grade = raw_rubric.get("telc_grade", "Ausreichend")
+
+        if lang == "ru":
+            text = (
+                f"📊 *Твой диагностический профиль telc Deutsch B1*\n\n"
+                f"🎯 *Оценка уровня:* {cefr}\n"
+                f"🏆 *Официальная оценка telc:* {telc_grade}\n"
+                f"📌 *Статус готовности:* {status_label}\n"
+                f"📈 *Общий балл:* {total_pts}/300 (индекс: {overall}/100)\n\n"
+                f"📝 *Schriftliche Prüfung:* {schriftlich}/225 {'✅' if schriftlich >= 135 else '❌'}\n"
+                f"• 📖 Lesen: *{les}/75*\n"
+                f"• 🧩 Sprachbausteine: *{sb}/30*\n"
+                f"• 🎧 Hören: *{hoe}/75*\n"
+                f"• ✍️ Brief: *{sch}/45*\n\n"
+                f"🗣️ *Mündliche Prüfung:* {muendlich}/75 {'✅' if muendlich >= 45 else '❌'}\n"
+                f"• Sprechen: *{spr}/75*\n\n"
+            )
+            if weak_points:
+                text += "🔍 *Обнаруженные слабые места:*\n"
+                for wp in weak_points[:3]:
+                    exp = wp.get("explanation_ru") or wp.get("topic") or ""
+                    text += f"• {exp}\n"
+                text += "\n"
+            text += "👉 Нажми на кнопку ниже, чтобы перейти сразу к нужной тренировке:"
+        else:
+            text = (
+                f"📊 *Your telc Deutsch B1 Diagnostic Profile*\n\n"
+                f"🎯 *Estimated CEFR:* {cefr}\n"
+                f"🏆 *Official telc Grade:* {telc_grade}\n"
+                f"📌 *Readiness Status:* {status_label}\n"
+                f"📈 *Total Score:* {total_pts}/300 (Index: {overall}/100)\n\n"
+                f"📝 *Schriftliche Prüfung:* {schriftlich}/225 {'✅' if schriftlich >= 135 else '❌'}\n"
+                f"• 📖 Lesen: *{les}/75*\n"
+                f"• 🧩 Sprachbausteine: *{sb}/30*\n"
+                f"• 🎧 Hören: *{hoe}/75*\n"
+                f"• ✍️ Brief: *{sch}/45*\n\n"
+                f"🗣️ *Mündliche Prüfung:* {muendlich}/75 {'✅' if muendlich >= 45 else '❌'}\n"
+                f"• Sprechen: *{spr}/75*\n\n"
+            )
+            if weak_points:
+                text += "🔍 *Detected Weak Points:*\n"
+                for wp in weak_points[:3]:
+                    exp = wp.get("explanation_en") or wp.get("topic") or ""
+                    text += f"• {exp}\n"
+                text += "\n"
+            text += "👉 Tap a button below to jump straight to targeted practice:"
+
+        scores = {
+            "lesen": round((les / 75.0) * 100),
+            "sprachbausteine": round((sb / 30.0) * 100),
+            "hoeren": round((hoe / 75.0) * 100),
+            "schreiben": round((sch / 45.0) * 100),
+            "sprechen": round((spr / 75.0) * 100)
+        }
+        actions = build_recommendations_and_actions(weak_points, scores, native_lang=lang)
+        kb = get_diagnostic_recommendations_keyboard(actions, lang=lang, exam_type="telc_b1")
     else:
-        text = (
-            f"📊 *Your Stork Diagnostic Profile*\n\n"
-            f"🎯 *Estimated CEFR:* {cefr}\n"
-            f"🏆 *Stork Diagnostic Score:* {overall}/100\n"
-            f"📌 *Readiness Status:* {status_label}\n\n"
-            f"📋 *Module Scores (Pass threshold: 60/100 each):*\n"
-            f"• 📖 Lesen: *{les}/100* {'✅' if les >= 60 else '❌'}\n"
-            f"• 🎧 Hören: *{hoe}/100* {'✅' if hoe >= 60 else '❌'}\n"
-            f"• ✍️ Schreiben: *{sch}/100* {'✅' if sch >= 60 else '❌'}\n"
-            f"• 🗣️ Sprechen: *{spr}/100* {'✅' if spr >= 60 else '❌'}\n\n"
-        )
-        if weak_points:
-            text += "🔍 *Detected Weak Points:*\n"
-            for wp in weak_points[:3]:
-                exp = wp.get("explanation_en") or wp.get("topic") or ""
-                text += f"• {exp}\n"
-            text += "\n"
-        text += "👉 Tap a button below to jump straight to targeted practice:"
+        if lang == "ru":
+            text = (
+                f"📊 *Твой диагностический профиль Goethe B1*\n\n"
+                f"🎯 *Оценка уровня:* {cefr}\n"
+                f"🏆 *Диагностический балл Stork:* {overall}/100\n"
+                f"📌 *Статус готовности:* {status_label}\n\n"
+                f"📋 *Баллы по модулям (порог сдачи: от 60/100):*\n"
+                f"• 📖 Lesen: *{les}/100* {'✅' if les >= 60 else '❌'}\n"
+                f"• 🎧 Hören: *{hoe}/100* {'✅' if hoe >= 60 else '❌'}\n"
+                f"• ✍️ Schreiben: *{sch}/100* {'✅' if sch >= 60 else '❌'}\n"
+                f"• 🗣️ Sprechen: *{spr}/100* {'✅' if spr >= 60 else '❌'}\n\n"
+            )
+            if weak_points:
+                text += "🔍 *Обнаруженные слабые места:*\n"
+                for wp in weak_points[:3]:
+                    exp = wp.get("explanation_ru") or wp.get("topic") or ""
+                    text += f"• {exp}\n"
+                text += "\n"
+            text += "👉 Нажми на кнопку ниже, чтобы перейти сразу к нужной тренировке:"
+        else:
+            text = (
+                f"📊 *Your Goethe B1 Diagnostic Profile*\n\n"
+                f"🎯 *Estimated CEFR:* {cefr}\n"
+                f"🏆 *Stork Diagnostic Score:* {overall}/100\n"
+                f"📌 *Readiness Status:* {status_label}\n\n"
+                f"📋 *Module Scores (Pass threshold: 60/100 each):*\n"
+                f"• 📖 Lesen: *{les}/100* {'✅' if les >= 60 else '❌'}\n"
+                f"• 🎧 Hören: *{hoe}/100* {'✅' if hoe >= 60 else '❌'}\n"
+                f"• ✍️ Schreiben: *{sch}/100* {'✅' if sch >= 60 else '❌'}\n"
+                f"• 🗣️ Sprechen: *{spr}/100* {'✅' if spr >= 60 else '❌'}\n\n"
+            )
+            if weak_points:
+                text += "🔍 *Detected Weak Points:*\n"
+                for wp in weak_points[:3]:
+                    exp = wp.get("explanation_en") or wp.get("topic") or ""
+                    text += f"• {exp}\n"
+                text += "\n"
+            text += "👉 Tap a button below to jump straight to targeted practice:"
 
-    # Собираем свежие кнопки действий
-    scores = {"lesen": les, "hoeren": hoe, "schreiben": sch, "sprechen": spr}
-    actions = build_recommendations_and_actions(weak_points, scores, native_lang=lang)
-    kb = get_diagnostic_recommendations_keyboard(actions, lang=lang)
+        scores = {"lesen": les, "hoeren": hoe, "schreiben": sch, "sprechen": spr}
+        actions = build_recommendations_and_actions(weak_points, scores, native_lang=lang)
+        kb = get_diagnostic_recommendations_keyboard(actions, lang=lang, exam_type="goethe_b1")
 
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
     await callback.answer()
@@ -908,6 +997,689 @@ async def finalize_goethe_readiness_test(message: Message, state: FSMContext, la
         )
 
     kb = get_diagnostic_recommendations_keyboard(actions, lang=lang)
+
+    try:
+        await status_msg.edit_text(report_text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        await message.answer(report_text, reply_markup=kb, parse_mode="Markdown")
+
+
+# ==============================================================================
+# TELC DEUTSCH B1 READINESS TEST (~25 минут, 300 баллов)
+# ==============================================================================
+
+@router.callback_query(F.data == "diag_telc_start")
+async def cb_start_telc_diagnostic(callback: CallbackQuery, state: FSMContext):
+    """Старт проверки готовности к telc Deutsch B1"""
+    await state.clear()
+    await state.set_state(DiagnosticState.telc_intro)
+    user_id = callback.from_user.id
+    lang = await db.get_user_lang(user_id)
+
+    if lang == "ru":
+        intro_text = (
+            "🏛️ *telc Deutsch B1: Проверка готовности*\n\n"
+            "Формат полностью соответствует официальному регламенту telc B1 (300 баллов):\n\n"
+            "📝 *1. Schriftliche Prüfung (максимум 225 баллов, проходной порог 135 / 60%):*\n"
+            "• 📖 *Leseverstehen:* 3 задания (75 баллов)\n"
+            "• 🧩 *Sprachbausteine:* 5 пропусков в письме (30 баллов)\n"
+            "• 🎧 *Hörverstehen:* 2 аудиоситуации (75 баллов)\n"
+            "• ✍️ *Schriftlicher Ausdruck:* полуофициальное письмо по 3 пунктам (45 баллов)\n\n"
+            "🗣️ *2. Mündliche Prüfung (максимум 75 баллов, проходной порог 45 / 60%):*\n"
+            "• Kontaktaufnahme, Thema präsentieren, Gemeinsam etwas planen\n\n"
+            "🏆 *Общий зачет:* 300 баллов. Чтобы сдать весь экзамен, нужно набрать минимум 180 баллов и обязательно преодолеть порог в обеих частях (письменной и устной).\n"
+            "⏱️ *Время:* около 25 минут.\n\n"
+            "Готов проверить свои силы по официальной шкале telc?"
+        )
+    else:
+        intro_text = (
+            "🏛️ *telc Deutsch B1 Readiness Test*\n\n"
+            "Structured strictly according to the official telc Deutsch B1 framework (300 pts):\n\n"
+            "📝 *1. Schriftliche Prüfung (max 225 pts, pass mark 135 / 60%):*\n"
+            "• 📖 *Leseverstehen:* 3 tasks (75 pts)\n"
+            "• 🧩 *Sprachbausteine:* cloze letter with 5 gaps (30 pts)\n"
+            "• 🎧 *Hörverstehen:* 2 audio recordings (75 pts)\n"
+            "• ✍️ *Schriftlicher Ausdruck:* letter covering 3 guiding points (45 pts)\n\n"
+            "🗣️ *2. Mündliche Prüfung (max 75 pts, pass mark 45 / 60%):*\n"
+            "• Kontaktaufnahme, Topic presentation, Planning together\n\n"
+            "🏆 *Total Score:* 300 pts. To receive a certificate, you must score 180+ pts and pass both written and oral sections.\n"
+            "⏱️ *Duration:* ~25 minutes.\n\n"
+            "Ready to test your readiness against the official telc standard?"
+        )
+
+    kb = get_telc_intro_keyboard(lang=lang)
+    await show_or_update_window(callback, intro_text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+
+# ----------------- TELC БЛОК 1: LESEVERSTEHEN (75 баллов) -----------------
+
+@router.callback_query(F.data == "tb1_start_lesen")
+async def cb_telc_start_lesen(callback: CallbackQuery, state: FSMContext):
+    """Старт модуля 1: telc Leseverstehen"""
+    await state.set_state(DiagnosticState.telc_lesen)
+    await state.update_data(
+        telc_lesen_current=0,
+        telc_lesen_answers=[]
+    )
+    await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
+    await send_telc_lesen_task(callback.message, state, task_idx=0, lang=lang)
+
+async def send_telc_lesen_task(message: Message, state: FSMContext, task_idx: int, lang: str):
+    """Отправка задания модуля telc Lesen"""
+    total = len(TELC_B1_LESEN_TASKS)
+    task = TELC_B1_LESEN_TASKS[task_idx]
+    progress = get_mini_progress(task_idx + 1, total)
+
+    if lang == "ru":
+        text = (
+            f"📖 *telc B1: Leseverstehen* • Задание {task_idx + 1} из {total}\n"
+            f"{progress}\n\n"
+            f"📌 *{task['title']}* (25 баллов)\n\n"
+            f"_{task['text']}_\n\n"
+            f"❓ *Вопрос:* {task['question']}\n\n"
+            f"Выбери правильный вариант ответа ниже 👇"
+        )
+    else:
+        text = (
+            f"📖 *telc B1: Leseverstehen* • Task {task_idx + 1} of {total}\n"
+            f"{progress}\n\n"
+            f"📌 *{task['title']}* (25 pts)\n\n"
+            f"_{task['text']}_\n\n"
+            f"❓ *Question:* {task['question']}\n\n"
+            f"Select the correct answer below 👇"
+        )
+
+    kb = get_telc_question_keyboard("les", task_idx, task["options"], lang=lang)
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("tb1_les:"))
+async def cb_answer_telc_lesen(callback: CallbackQuery, state: FSMContext):
+    """Обработка ответа на задание Leseverstehen"""
+    data = await state.get_data()
+    current_idx = data.get("telc_lesen_current", 0)
+    lesen_answers: List[int] = data.get("telc_lesen_answers", [])
+
+    parts = callback.data.split(":")
+    task_idx = int(parts[1])
+    opt_idx = int(parts[2])
+
+    if task_idx != current_idx:
+        await callback.answer()
+        return
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    lesen_answers.append(opt_idx)
+    next_idx = current_idx + 1
+    lang = await db.get_user_lang(callback.from_user.id)
+
+    if next_idx < len(TELC_B1_LESEN_TASKS):
+        await state.update_data(telc_lesen_current=next_idx, telc_lesen_answers=lesen_answers)
+        await callback.answer()
+        await send_telc_lesen_task(callback.message, state, task_idx=next_idx, lang=lang)
+    else:
+        # Переход к Блоку 2: Sprachbausteine
+        await state.update_data(
+            telc_lesen_answers=lesen_answers,
+            telc_sb_current=0,
+            telc_sb_answers=[]
+        )
+        await state.set_state(DiagnosticState.telc_sprachbausteine)
+        transition_text = (
+            "✅ *Блок Leseverstehen завершен!*\n\n"
+            "Переходим к фирменному разделу telc: *Sprachbausteine (Грамматика и связность в письме)* 👇"
+            if lang == "ru"
+            else "✅ *Leseverstehen completed!*\n\nMoving to *Sprachbausteine (Grammar & Vocabulary in Context)* 👇"
+        )
+        try:
+            await callback.message.edit_text(transition_text, reply_markup=None, parse_mode="Markdown")
+        except Exception:
+            pass
+        await callback.answer("Lesen завершено! Переходим к Sprachbausteine." if lang == "ru" else "Lesen completed! Moving to Sprachbausteine.")
+        await send_telc_sprachbausteine_task(callback.message, state, task_idx=0, lang=lang)
+
+
+# ----------------- TELC БЛОК 2: SPRACHBAUSTEINE (30 баллов) -----------------
+
+async def send_telc_sprachbausteine_task(message: Message, state: FSMContext, task_idx: int, lang: str):
+    """Отправка задания telc Sprachbausteine"""
+    total = len(TELC_B1_SPRACHBAUSTEINE_TASKS)
+    task = TELC_B1_SPRACHBAUSTEINE_TASKS[task_idx]
+    progress = get_mini_progress(task_idx + 1, total)
+
+    if lang == "ru":
+        text = (
+            f"🧩 *telc B1: Sprachbausteine* • Пропуск {task_idx + 1} из {total}\n"
+            f"{progress}\n\n"
+            f"📌 *Текст письма:*\n"
+            f"_{TELC_B1_SPRACHBAUSTEINE_INTRO}_\n\n"
+            f"❓ *{task['prompt']}* (6 баллов)\n\n"
+            f"Выбери подходящее слово для этого пропуска 👇"
+        )
+    else:
+        text = (
+            f"🧩 *telc B1: Sprachbausteine* • Gap {task_idx + 1} of {total}\n"
+            f"{progress}\n\n"
+            f"📌 *Letter text:*\n"
+            f"_{TELC_B1_SPRACHBAUSTEINE_INTRO}_\n\n"
+            f"❓ *{task['prompt']}* (6 pts)\n\n"
+            f"Select the correct option for this gap 👇"
+        )
+
+    kb = get_telc_question_keyboard("sb", task_idx, task["options"], lang=lang)
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("tb1_sb:"))
+async def cb_answer_telc_sprachbausteine(callback: CallbackQuery, state: FSMContext):
+    """Обработка ответа на пропуск Sprachbausteine"""
+    data = await state.get_data()
+    current_idx = data.get("telc_sb_current", 0)
+    sb_answers: List[int] = data.get("telc_sb_answers", [])
+
+    parts = callback.data.split(":")
+    task_idx = int(parts[1])
+    opt_idx = int(parts[2])
+
+    if task_idx != current_idx:
+        await callback.answer()
+        return
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    sb_answers.append(opt_idx)
+    next_idx = current_idx + 1
+    lang = await db.get_user_lang(callback.from_user.id)
+
+    if next_idx < len(TELC_B1_SPRACHBAUSTEINE_TASKS):
+        await state.update_data(telc_sb_current=next_idx, telc_sb_answers=sb_answers)
+        await callback.answer()
+        await send_telc_sprachbausteine_task(callback.message, state, task_idx=next_idx, lang=lang)
+    else:
+        # Переход к Блоку 3: Hörverstehen
+        await state.update_data(
+            telc_sb_answers=sb_answers,
+            telc_hoe_current=0,
+            telc_hoe_answers=[]
+        )
+        await state.set_state(DiagnosticState.telc_hoeren)
+        transition_text = (
+            "✅ *Блок Sprachbausteine завершен!*\n\n"
+            "Переходим к аудированию: *Hörverstehen (75 баллов)* 👇"
+            if lang == "ru"
+            else "✅ *Sprachbausteine completed!*\n\nMoving to *Hörverstehen (Listening, 75 pts)* 👇"
+        )
+        try:
+            await callback.message.edit_text(transition_text, reply_markup=None, parse_mode="Markdown")
+        except Exception:
+            pass
+        await callback.answer("Sprachbausteine завершено! Переходим к Hören." if lang == "ru" else "Sprachbausteine completed! Moving to Hören.")
+        await send_telc_hoeren_task(callback.message, state, task_idx=0, lang=lang)
+
+
+# ----------------- TELC БЛОК 3: HÖRVERSTEHEN (75 баллов) -----------------
+
+async def send_telc_hoeren_task(message: Message, state: FSMContext, task_idx: int, lang: str):
+    """Отправка аудирования telc Hören с Edge-TTS озвучкой"""
+    total = len(TELC_B1_HOEREN_TASKS)
+    task = TELC_B1_HOEREN_TASKS[task_idx]
+
+    try:
+        audio_bytes = await synthesize_speech(task["audio_script"], voice=VOICE_MALE)
+    except Exception as e:
+        logger.error(f"Ошибка озвучки аудиофайла для telc Hören {task['id']}: {e}")
+        audio_bytes = b""
+
+    voice_caption = (
+        f"🎧 *telc B1: Hörverstehen* • Аудио {task_idx + 1} из {total}\n"
+        f"📌 *{task['title']}* ({task['points']} баллов)\n\n"
+        f"Внимательно прослушай запись диктора!"
+        if lang == "ru"
+        else
+        f"🎧 *telc B1: Hörverstehen* • Audio {task_idx + 1} of {total}\n"
+        f"📌 *{task['title']}* ({task['points']} pts)\n\n"
+        f"Listen carefully to the recording!"
+    )
+
+    if audio_bytes:
+        voice_file = BufferedInputFile(audio_bytes, filename=f"telc_hoeren_{task['id']}.mp3")
+        await message.answer_voice(voice=voice_file, caption=voice_caption, parse_mode="Markdown")
+        mark_voice_sent(message.chat.id)
+    else:
+        await message.answer(f"{voice_caption}\n\n_{task['audio_script']}_", parse_mode="Markdown")
+
+    q_text = (
+        f"❓ *Вопрос к аудиозаписи:*\n\n"
+        f"*{task['question']}*\n\n"
+        f"Выбери правильный ответ ниже 👇"
+        if lang == "ru"
+        else
+        f"❓ *Question:*\n\n"
+        f"*{task['question']}*\n\n"
+        f"Select the correct answer below 👇"
+    )
+    kb = get_telc_question_keyboard("hoe", task_idx, task["options"], lang=lang)
+    await message.answer(q_text, reply_markup=kb, parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("tb1_hoe:"))
+async def cb_answer_telc_hoeren(callback: CallbackQuery, state: FSMContext):
+    """Обработка ответа на задание Hörverstehen"""
+    data = await state.get_data()
+    current_idx = data.get("telc_hoe_current", 0)
+    hoe_answers: List[int] = data.get("telc_hoe_answers", [])
+
+    parts = callback.data.split(":")
+    task_idx = int(parts[1])
+    opt_idx = int(parts[2])
+
+    if task_idx != current_idx:
+        await callback.answer()
+        return
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    hoe_answers.append(opt_idx)
+    next_idx = current_idx + 1
+    lang = await db.get_user_lang(callback.from_user.id)
+
+    if next_idx < len(TELC_B1_HOEREN_TASKS):
+        await state.update_data(telc_hoe_current=next_idx, telc_hoe_answers=hoe_answers)
+        await callback.answer()
+        await send_telc_hoeren_task(callback.message, state, task_idx=next_idx, lang=lang)
+    else:
+        # Переход к Блоку 4: Schriftlicher Ausdruck
+        await state.update_data(telc_hoe_answers=hoe_answers)
+        await state.set_state(DiagnosticState.telc_schreiben)
+        transition_text = (
+            "✅ *Блок Hörverstehen завершен!*\n\n"
+            "Переходим к письму: *Schriftlicher Ausdruck (Brief, 45 баллов)* 👇"
+            if lang == "ru"
+            else "✅ *Hörverstehen completed!*\n\nMoving to *Schriftlicher Ausdruck (Letter, 45 pts)* 👇"
+        )
+        try:
+            await callback.message.edit_text(transition_text, reply_markup=None, parse_mode="Markdown")
+        except Exception:
+            pass
+        await callback.answer("Hören завершено! Переходим к Schreiben." if lang == "ru" else "Hören completed! Moving to Schreiben.")
+        await render_telc_schreiben_screen(callback.message, lang=lang)
+
+
+# ----------------- TELC БЛОК 4: SCHRIFTLICHER AUSDRUCK (45 баллов) -----------------
+
+async def render_telc_schreiben_screen(message: Message, lang: str):
+    """Отображение письменного задания telc (полуофициальное письмо)"""
+    prompt_info = TELC_B1_SCHREIBEN_PROMPT
+
+    if lang == "ru":
+        text = (
+            "✍️ *telc B1: Schriftlicher Ausdruck (Brief)*\n\n"
+            "📌 *Задание: Полуофициальное письмо*\n\n"
+            f"{prompt_info['prompt_de']}\n\n"
+            f"🎯 *Максимум:* 45 баллов (по официальной шкале telc)\n"
+            f"📝 *Объем:* {prompt_info['target_words']}\n\n"
+            "👉 *Напиши письмо на немецком прямо в ответном сообщении:*"
+        )
+    else:
+        text = (
+            "✍️ *telc B1: Schriftlicher Ausdruck (Letter)*\n\n"
+            "📌 *Task: Semi-formal Letter*\n\n"
+            f"{prompt_info['prompt_de']}\n\n"
+            f"🎯 *Maximum score:* 45 pts (official telc rubric)\n"
+            f"📝 *Length:* {prompt_info['target_words']}\n\n"
+            "👉 *Send your letter in German directly in the chat:*"
+        )
+
+    kb = get_telc_cancel_keyboard(lang=lang)
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+@router.message(DiagnosticState.telc_schreiben, F.text)
+async def handle_telc_schreiben_text(message: Message, state: FSMContext):
+    """Прием и проверка письменной работы telc B1 через Gemini"""
+    user_text = message.text.strip()
+    lang = await db.get_user_lang(message.from_user.id)
+
+    words = user_text.split()
+    if len(words) < 10:
+        warning = (
+            "⚠️ Текст слишком короткий (меньше 10 слов). Пожалуйста, напиши хотя бы 30-40 слов, "
+            "чтобы экзаменатор мог оценить раскрытие всех 3 пунктов, грамматику и оформление письма!"
+            if lang == "ru"
+            else
+            "⚠️ The letter is too short (fewer than 10 words). Please write at least 30-40 words "
+            "so the telc rubric can assess task completion, grammar, and layout!"
+        )
+        await message.answer(warning)
+        return
+
+    status_msg = (
+        "⏳ *Письмо принято!* Проверяем раскрытие 3 пунктов, грамматику и оформление по 45-балльной шкале telc..."
+        if lang == "ru"
+        else
+        "⏳ *Letter received!* Evaluating all 3 Leitpunkte, grammar, and layout on the 45-point telc rubric..."
+    )
+    status_notice = await message.answer(status_msg, parse_mode="Markdown")
+
+    schreiben_res = await evaluate_telc_schreiben_module(user_text, native_lang=lang)
+    await state.update_data(telc_schreiben_res=schreiben_res, telc_user_schreiben_text=user_text)
+
+    try:
+        await status_notice.delete()
+    except Exception:
+        pass
+
+    # Переход к Mündliche Prüfung: Sprechen
+    await state.set_state(DiagnosticState.telc_sprechen_part1)
+    await render_telc_sprechen_screen(message, part_num=1, lang=lang)
+
+
+# ----------------- TELC БЛОК 5: MÜNDLICHE PRÜFUNG (75 баллов) -----------------
+
+async def render_telc_sprechen_screen(message: Message, part_num: int, lang: str):
+    """Отображение заданий устной части telc (3 части)"""
+    part_key = f"part{part_num}"
+    part_task = TELC_B1_SPRECHEN_TASKS[part_key]
+
+    if lang == "ru":
+        text = (
+            f"🗣️ *telc B1: Mündliche Prüfung (Говорение)* • Часть {part_num} из 3\n\n"
+            f"📌 *{part_task['title']}* ({part_task['points']} баллов)\n\n"
+            f"🇩🇪 *{part_task['prompt_de']}*\n\n"
+            f"⏱️ *Формат ответа:* {part_task['target']}\n\n"
+            f"👉 *Запиши голосовое сообщение со своим ответом (или напечатай текст):*"
+        )
+    else:
+        text = (
+            f"🗣️ *telc B1: Mündliche Prüfung (Speaking)* • Part {part_num} of 3\n\n"
+            f"📌 *{part_task['title']}* ({part_task['points']} pts)\n\n"
+            f"🇩🇪 *{part_task['prompt_de']}*\n\n"
+            f"⏱️ *Format:* {part_task['target']}\n\n"
+            f"👉 *Record a voice message with your response (or submit text):*"
+        )
+
+    kb = get_telc_cancel_keyboard(lang=lang)
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+async def process_telc_sprechen_input(message: Message, state: FSMContext, part_num: int):
+    """Обработка голосового или текстового ответа в устной части telc"""
+    user_id = message.from_user.id
+    lang = await db.get_user_lang(user_id)
+    transcribed_text = ""
+
+    if message.voice:
+        try:
+            file_info = await message.bot.get_file(message.voice.file_id)
+            voice_stream = io.BytesIO()
+            await message.bot.download_file(file_info.file_path, destination=voice_stream)
+            audio_bytes = voice_stream.getvalue()
+            transcribed_text = await transcribe_voice(audio_bytes, mime_type="audio/ogg")
+        except Exception as e:
+            logger.error(f"Ошибка транскрибации голосового в telc Sprechen: {e}")
+
+        if not transcribed_text:
+            err_msg = (
+                "🪶 Не удалось разобрать запись. Пожалуйста, надиктуй еще раз погромче или напиши текстом!"
+                if lang == "ru"
+                else "🪶 Could not transcribe audio clearly. Please record again or submit text!"
+            )
+            await message.answer(err_msg)
+            return
+    elif message.text:
+        transcribed_text = message.text.strip()
+    else:
+        await message.answer("Пожалуйста, отправь голосовое сообщение или текст!" if lang == "ru" else "Please send a voice note or text!")
+        return
+
+    data = await state.get_data()
+    sprechen_parts = data.get("telc_sprechen_parts", {})
+    sprechen_parts[f"part{part_num}"] = transcribed_text
+    await state.update_data(telc_sprechen_parts=sprechen_parts)
+
+    if part_num == 1:
+        await state.set_state(DiagnosticState.telc_sprechen_part2)
+        await render_telc_sprechen_screen(message, part_num=2, lang=lang)
+    elif part_num == 2:
+        await state.set_state(DiagnosticState.telc_sprechen_part3)
+        await render_telc_sprechen_screen(message, part_num=3, lang=lang)
+    else:
+        # Все 3 части сданы, переходим к финализации
+        await state.set_state(DiagnosticState.telc_evaluating)
+        await finalize_telc_readiness_test(message, state, lang=lang)
+
+@router.message(DiagnosticState.telc_sprechen_part1, F.voice | F.text)
+async def handle_telc_sprechen_part1(message: Message, state: FSMContext):
+    await process_telc_sprechen_input(message, state, part_num=1)
+
+@router.message(DiagnosticState.telc_sprechen_part2, F.voice | F.text)
+async def handle_telc_sprechen_part2(message: Message, state: FSMContext):
+    await process_telc_sprechen_input(message, state, part_num=2)
+
+@router.message(DiagnosticState.telc_sprechen_part3, F.voice | F.text)
+async def handle_telc_sprechen_part3(message: Message, state: FSMContext):
+    await process_telc_sprechen_input(message, state, part_num=3)
+
+
+# ----------------- ИТОГОВАЯ ФИНАЛИЗАЦИЯ TELC B1 -----------------
+
+async def finalize_telc_readiness_test(message: Message, state: FSMContext, lang: str):
+    """Итоговая оценка telc B1 по официальной 300-балльной системе и сохранение в БД"""
+    user_id = message.from_user.id
+    data = await state.get_data()
+
+    status_wait = (
+        "⏳ *Идет расчет готовности к экзамену telc Deutsch B1...*\n\n"
+        "Оцениваем устную часть по критериям telc (выражение мыслей, решение задач, грамматика, произношение)..."
+        if lang == "ru"
+        else
+        "⏳ *Computing official telc Deutsch B1 Readiness assessment...*\n\n"
+        "AI is evaluating oral performance on official telc criteria (expression, tasks, grammar, pronunciation)..."
+    )
+    status_msg = await message.answer(status_wait, parse_mode="Markdown")
+
+    lesen_answers = data.get("telc_lesen_answers", [])
+    sb_answers = data.get("telc_sb_answers", [])
+    hoe_answers = data.get("telc_hoe_answers", [])
+    schreiben_res = data.get("telc_schreiben_res", {})
+    sprechen_parts = data.get("telc_sprechen_parts", {})
+
+    sprechen_res = await evaluate_telc_sprechen_module(sprechen_parts, native_lang=lang)
+
+    score_lesen, lesen_errs = score_telc_lesen_module(lesen_answers)
+    score_sb, sb_errs = score_telc_sprachbausteine_module(sb_answers)
+    score_hoe, hoe_errs = score_telc_hoeren_module(hoe_answers)
+    score_schreiben = int(schreiben_res.get("score", 25))
+    score_sprechen = int(sprechen_res.get("score", 45))
+
+    status, schriftlich_score, muendlich_score, total_points, grade_label, weakest = calculate_telc_readiness_overall(
+        lesen_score=score_lesen,
+        sprachbausteine_score=score_sb,
+        hoeren_score=score_hoe,
+        schreiben_score=score_schreiben,
+        sprechen_score=score_sprechen
+    )
+
+    overall_100 = round((total_points / 300.0) * 100)
+
+    if total_points >= 210 and schriftlich_score >= 135 and muendlich_score >= 45:
+        cefr_estimate = "B1"
+    elif total_points >= 180 and (schriftlich_score >= 135 or muendlich_score >= 45):
+        cefr_estimate = "B1"
+    elif total_points >= 120:
+        cefr_estimate = "A2"
+    else:
+        cefr_estimate = "A1"
+
+    all_weak_points: List[Dict[str, Any]] = []
+    all_weak_points.extend(lesen_errs)
+    all_weak_points.extend(sb_errs)
+    all_weak_points.extend(hoe_errs)
+    all_weak_points.extend(schreiben_res.get("weak_points", []))
+    all_weak_points.extend(sprechen_res.get("weak_points", []))
+
+    all_strengths: List[str] = []
+    str_key = "strengths_ru" if lang == "ru" else "strengths_en"
+    all_strengths.extend(schreiben_res.get(str_key, []))
+    all_strengths.extend(sprechen_res.get(str_key, []))
+
+    scores = {
+        "lesen": score_lesen,
+        "sprachbausteine": score_sb,
+        "hoeren": score_hoe,
+        "schreiben": score_schreiben,
+        "sprechen": score_sprechen,
+        "schriftlich_total": schriftlich_score,
+        "muendlich_total": muendlich_score,
+        "telc_total": total_points
+    }
+
+    raw_rubric = {
+        "writing": schreiben_res.get("criteria", {}),
+        "speaking": sprechen_res.get("criteria", {}),
+        "telc_grade": grade_label,
+        "schriftlich_score": schriftlich_score,
+        "muendlich_score": muendlich_score,
+        "total_points": total_points,
+        "rubric_writing_version": RUBRIC_TELC_WRITING_VERSION,
+        "rubric_speaking_version": RUBRIC_TELC_SPEAKING_VERSION
+    }
+
+    pct_scores = {
+        "lesen": round((score_lesen / 75.0) * 100),
+        "sprachbausteine": round((score_sb / 30.0) * 100),
+        "hoeren": round((score_hoe / 75.0) * 100),
+        "schreiben": round((score_schreiben / 45.0) * 100),
+        "sprechen": round((score_sprechen / 75.0) * 100)
+    }
+    actions = build_recommendations_and_actions(all_weak_points, pct_scores, native_lang=lang)
+
+    await db.save_diagnostic_result(
+        user_id=user_id,
+        exam_type="telc_b1",
+        exam_version=TELC_B1_VERSION,
+        diagnostic_type="readiness",
+        cefr_estimate=cefr_estimate,
+        readiness_status=status,
+        overall_diagnostic_score=overall_100,
+        lesen_score=score_lesen,
+        hoeren_score=score_hoe,
+        schreiben_score=score_schreiben,
+        sprechen_score=score_sprechen,
+        sprachbausteine_score=score_sb,
+        raw_rubric_scores=raw_rubric,
+        module_results=scores,
+        weak_points=all_weak_points,
+        strengths=all_strengths,
+        recommendations=actions,
+        speaking_profile=sprechen_res.get("speaking_profile", {}),
+        writing_profile=schreiben_res.get("writing_profile", {})
+    )
+
+    await state.clear()
+
+    schriftlich_pass = schriftlich_score >= 135
+    muendlich_pass = muendlich_score >= 45
+    w_crit = schreiben_res.get("criteria", {})
+    s_crit = sprechen_res.get("criteria", {})
+
+    status_titles_ru = {
+        "STRONG": "🟢 Полная готовность к telc B1 (Отличный результат)",
+        "LIKELY_READY": "🟢 Высокие шансы сдать telc B1 (Bestanden)",
+        "NEAR_PASS": "🟡 Частичная сдача (одна из частей требует доработки)",
+        "NOT_READY": "🔴 Ниже проходного балла (требуется подготовка)"
+    }
+    status_titles_en = {
+        "STRONG": "🟢 telc B1 Ready (Strong Performance)",
+        "LIKELY_READY": "🟢 Likely to Pass telc B1",
+        "NEAR_PASS": "🟡 Partial Pass (One section needs targeted work)",
+        "NOT_READY": "🔴 Below Pass Threshold (Preparation Needed)"
+    }
+    status_title = status_titles_ru.get(status, status) if lang == "ru" else status_titles_en.get(status, status)
+
+    if lang == "ru":
+        report_text = (
+            f"🏛️ *Итоговый отчет: telc Deutsch B1 Readiness Test*\n\n"
+            f"📌 *Статус:* {status_title}\n"
+            f"🏆 *Официальная оценка telc:* {grade_label}\n"
+            f"📊 *Сумма баллов:* {total_points}/300 (индекс: {overall_100}/100)\n\n"
+            f"📝 *1. Schriftliche Prüfung:* {schriftlich_score}/225 {'✅ Сдано' if schriftlich_pass else '❌ Ниже порога 135'}\n"
+            f"• 📖 Leseverstehen: {score_lesen}/75\n"
+            f"• 🧩 Sprachbausteine: {score_sb}/30\n"
+            f"• 🎧 Hörverstehen: {score_hoe}/75\n"
+            f"• ✍️ Brief: {score_schreiben}/45\n"
+            f"  └ Пункты: {w_crit.get('leitpunkte', 0)}/15 • Грамматика: {w_crit.get('korrektheit', 0)}/15 • Структура: {w_crit.get('gestaltung', 0)}/15\n\n"
+            f"🗣️ *2. Mündliche Prüfung:* {muendlich_score}/75 {'✅ Сдано' if muendlich_pass else '❌ Ниже порога 45'}\n"
+            f"• Sprechen: {score_sprechen}/75\n"
+            f"  └ Выражение мыслей: {s_crit.get('ausdruck', 0)}/15 • Задачи: {s_crit.get('aufgabenbewaeltigung', 0)}/20 • Грамматика: {s_crit.get('formale_richtigkeit', 0)}/20 • Произношение: {s_crit.get('aussprache', 0)}/20\n\n"
+        )
+        if schriftlich_pass and muendlich_pass:
+            report_text += "🎉 *Отличная работа!* Обе части (письменная и устная) успешно преодолели порог 60%!\n\n"
+        elif schriftlich_pass and not muendlich_pass:
+            report_text += "⚠️ *По правилам telc:* письменная часть сдана, но устную часть необходимо пересдать (минимум 45 баллов).\n\n"
+        elif muendlich_pass and not schriftlich_pass:
+            report_text += "⚠️ *По правилам telc:* устная часть сдана, но письменную часть необходимо подтянуть (минимум 135 баллов).\n\n"
+        else:
+            report_text += "⚠️ Обе части пока ниже минимального порога сдачи. Требуется комплексная подготовка!\n\n"
+
+        if all_weak_points:
+            report_text += "🔍 *Главные точки роста:*\n"
+            for wp in all_weak_points[:3]:
+                exp = wp.get("explanation_ru") or wp.get("topic") or ""
+                report_text += f"• {exp}\n"
+            report_text += "\n"
+
+        report_text += (
+            "ℹ️ _Это диагностика Stork AI по официальному регламенту telc Deutsch B1 (300 баллов). "
+            "Результат не является официальным сертификатом telc gGmbH._\n\n"
+            "👉 *Твой план тренировок:* выбери кнопку ниже, чтобы подтянуть слабые места 👇"
+        )
+    else:
+        report_text = (
+            f"🏛️ *Official Report: telc Deutsch B1 Readiness Test*\n\n"
+            f"📌 *Status:* {status_title}\n"
+            f"🏆 *Official telc Grade:* {grade_label}\n"
+            f"📊 *Total Score:* {total_points}/300 (Diagnostic Index: {overall_100}/100)\n\n"
+            f"📝 *1. Schriftliche Prüfung:* {schriftlich_score}/225 {'✅ Passed' if schriftlich_pass else '❌ Below 135 threshold'}\n"
+            f"• 📖 Leseverstehen: {score_lesen}/75\n"
+            f"• 🧩 Sprachbausteine: {score_sb}/30\n"
+            f"• 🎧 Hörverstehen: {score_hoe}/75\n"
+            f"• ✍️ Brief: {score_schreiben}/45\n"
+            f"  └ Content: {w_crit.get('leitpunkte', 0)}/15 • Grammar: {w_crit.get('korrektheit', 0)}/15 • Style: {w_crit.get('gestaltung', 0)}/15\n\n"
+            f"🗣️ *2. Mündliche Prüfung:* {muendlich_score}/75 {'✅ Passed' if muendlich_pass else '❌ Below 45 threshold'}\n"
+            f"• Sprechen: {score_sprechen}/75\n"
+            f"  └ Expression: {s_crit.get('ausdruck', 0)}/15 • Task: {s_crit.get('aufgabenbewaeltigung', 0)}/20 • Grammar: {s_crit.get('formale_richtigkeit', 0)}/20 • Pronunciation: {s_crit.get('aussprache', 0)}/20\n\n"
+        )
+        if schriftlich_pass and muendlich_pass:
+            report_text += "🎉 *Congratulations!* Both written and oral sections exceeded the 60% passing mark!\n\n"
+        elif schriftlich_pass and not muendlich_pass:
+            report_text += "⚠️ *Under telc regulations:* written exam passed, oral exam needs a re-sit (>= 45 pts required).\n\n"
+        elif muendlich_pass and not schriftlich_pass:
+            report_text += "⚠️ *Under telc regulations:* oral exam passed, written exam needs a re-sit (>= 135 pts required).\n\n"
+        else:
+            report_text += "⚠️ Both sections are currently below the passing score. Comprehensive preparation needed!\n\n"
+
+        if all_weak_points:
+            report_text += "🔍 *Target Areas for Improvement:*\n"
+            for wp in all_weak_points[:3]:
+                exp = wp.get("explanation_en") or wp.get("topic") or ""
+                report_text += f"• {exp}\n"
+            report_text += "\n"
+
+        report_text += (
+            "ℹ️ _This is an internal Stork AI diagnostic modeled on the official telc Deutsch B1 300-point framework. "
+            "It is not an official certificate from telc gGmbH._\n\n"
+            "👉 *Your Action Plan:* choose targeted exercises below 👇"
+        )
+
+    kb = get_diagnostic_recommendations_keyboard(actions, lang=lang, exam_type="telc_b1")
 
     try:
         await status_msg.edit_text(report_text, reply_markup=kb, parse_mode="Markdown")

@@ -102,6 +102,10 @@ def get_exams_hub_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
             callback_data="diag_goethe_start"
         )],
         [InlineKeyboardButton(
+            text="🏛️ telc B1: Проверка готовности (~25 мин)" if lang == "ru" else "🏛️ telc B1 Readiness Test (~25 min)",
+            callback_data="diag_telc_start"
+        )],
+        [InlineKeyboardButton(
             text="⚡ Экспресс-проверка уровня (2-3 мин)" if lang == "ru" else "⚡ Express Level Check (2-3 min)",
             callback_data="diag_express_start"
         )],
@@ -584,6 +588,10 @@ def get_diagnostic_choice_keyboard(lang: str = "ru", has_history: bool = False) 
         [InlineKeyboardButton(
             text="🎯 Goethe B1: Проверка готовности (25-30 мин)" if lang == "ru" else "🎯 Goethe B1 Readiness Test (25-30 min)",
             callback_data="diag_goethe_start"
+        )],
+        [InlineKeyboardButton(
+            text="🏛️ telc B1: Проверка готовности (25-30 мин)" if lang == "ru" else "🏛️ telc B1 Readiness Test (25-30 min)",
+            callback_data="diag_telc_start"
         )]
     ]
     if has_history:
@@ -614,6 +622,10 @@ def get_express_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             text="🎯 Пройти Goethe B1 Readiness Test" if lang == "ru" else "🎯 Take Goethe B1 Readiness Test",
             callback_data="diag_goethe_start"
+        )],
+        [InlineKeyboardButton(
+            text="🏛️ Пройти telc B1 Readiness Test" if lang == "ru" else "🏛️ Take telc B1 Readiness Test",
+            callback_data="diag_telc_start"
         )],
         [InlineKeyboardButton(
             text="🔄 Повторить экспресс-тест" if lang == "ru" else "🔄 Retake Express Check",
@@ -658,7 +670,40 @@ def get_goethe_cancel_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         )]
     ])
 
-def get_diagnostic_recommendations_keyboard(actions: List[Dict[str, Any]], lang: str = "ru") -> InlineKeyboardMarkup:
+def get_telc_intro_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура перед стартом полного telc B1 теста"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🚀 Начать: Schriftliche Prüfung (Lesen)" if lang == "ru" else "🚀 Start: Schriftliche Prüfung (Lesen)",
+            callback_data="tb1_start_lesen"
+        )],
+        [InlineKeyboardButton(
+            text="🔙 Назад в меню тестов" if lang == "ru" else "🔙 Back to Test Menu",
+            callback_data="diag_hub"
+        )]
+    ])
+
+def get_telc_question_keyboard(prefix: str, q_idx: int, options: List[str], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура для вопросов telc (Lesen, Sprachbausteine, Hören)"""
+    buttons = []
+    for idx, opt in enumerate(options):
+        buttons.append([InlineKeyboardButton(text=opt, callback_data=f"tb1_{prefix}:{q_idx}:{idx}")])
+    buttons.append([InlineKeyboardButton(
+        text="❌ Прервать тест" if lang == "ru" else "❌ Cancel Test",
+        callback_data="diag_cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_telc_cancel_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой отмены для открытых модулей telc (Schreiben, Sprechen)"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="❌ Прервать тест" if lang == "ru" else "❌ Cancel Test",
+            callback_data="diag_cancel"
+        )]
+    ])
+
+def get_diagnostic_recommendations_keyboard(actions: List[Dict[str, Any]], lang: str = "ru", exam_type: str = "goethe_b1") -> InlineKeyboardMarkup:
     """Клавиатура персонального плана тренировок с прямыми кнопками перехода"""
     buttons = []
     for act in actions:
@@ -666,10 +711,16 @@ def get_diagnostic_recommendations_keyboard(actions: List[Dict[str, Any]], lang:
             text=act["title"],
             callback_data=act["btn_callback"]
         )])
-    buttons.append([InlineKeyboardButton(
-        text="🎯 Пройти тест повторно" if lang == "ru" else "🎯 Retake Goethe B1 Test",
-        callback_data="diag_goethe_start"
-    )])
+    if exam_type == "telc_b1":
+        buttons.append([InlineKeyboardButton(
+            text="🏛️ Повторить тест telc B1" if lang == "ru" else "🏛️ Retake telc B1 Test",
+            callback_data="diag_telc_start"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text="🎯 Повторить тест Goethe B1" if lang == "ru" else "🎯 Retake Goethe B1 Test",
+            callback_data="diag_goethe_start"
+        )])
     buttons.append([InlineKeyboardButton(
         text=i18n.get("btn_main_menu", lang),
         callback_data="back_to_menu"

@@ -685,3 +685,542 @@ def build_recommendations_and_actions(
         })
 
     return actions
+
+
+# ==============================================================================
+# 4. TELC DEUTSCH B1 READINESS TEST (~25-30 минут, 300-балльная система)
+# ==============================================================================
+
+TELC_B1_VERSION = "telc_b1_v1"
+RUBRIC_TELC_WRITING_VERSION = "telc_writing_v1"
+RUBRIC_TELC_SPEAKING_VERSION = "telc_speaking_v1"
+
+# ----------------- МОДУЛЬ 1: TELC LESEN (3 задания, макс 75 баллов) -----------------
+TELC_B1_LESEN_TASKS: List[Dict[str, Any]] = [
+    {
+        "id": "telc_les_1",
+        "title": "Teil 1: Globalverstehen (Wohnen in der WG)",
+        "points": 25,
+        "text": (
+            "Immer mehr junge Berufstätige in Deutschland entscheiden sich für eine Wohngemeinschaft (WG). "
+            "Während früher fast nur Studierende zusammenlebten, schätzen heute auch viele Berufseinsteiger "
+            "die geteilten Mietkosten und das gemeinsame Kochen nach Feierabend."
+        ),
+        "question": "Was ist das Hauptthema dieses Textes?",
+        "options": [
+            "Warum Studierende in Großstädten keine Wohnungen finden.",
+            "Dass WGs heute auch bei Berufstätigen sehr beliebt sind.",
+            "Dass die Mieten in Deutschland überall sinken.",
+            "Wie man eine eigene Wohnung kauft."
+        ],
+        "correct_index": 1,
+        "explanation": "Im Text: 'schätzen heute auch viele Berufseinsteiger die geteilten Mietkosten...'."
+    },
+    {
+        "id": "telc_les_2",
+        "title": "Teil 2: Detailverstehen (Duale Ausbildung)",
+        "points": 25,
+        "text": (
+            "Die duale Berufsausbildung in Deutschland verbindet Theorie in der Berufsschule mit praktischer Arbeit "
+            "im Betrieb. Auszubildende erhalten von Anfang an ein monatliches Gehalt. Die Ausbildung dauert in der Regel "
+            "drei Jahre und bietet hervorragende Chancen auf eine Festanstellung."
+        ),
+        "question": "Welche Aussage über die duale Ausbildung ist laut Text richtig?",
+        "options": [
+            "Auszubildende lernen ausschließlich an Universitäten.",
+            "Man bekommt während der gesamten Ausbildung kein Gehalt.",
+            "Theorie und Praxis im Betrieb werden miteinander kombiniert.",
+            "Die Ausbildung dauert immer mindestens fünf Jahre."
+        ],
+        "correct_index": 2,
+        "explanation": "Im Text: 'verbindet Theorie in der Berufsschule mit praktischer Arbeit im Betrieb'."
+    },
+    {
+        "id": "telc_les_3",
+        "title": "Teil 3: Selektives Verstehen (Kundenservice)",
+        "points": 25,
+        "text": (
+            "Unser Reparaturservice bietet schnelle Hilfe für Haushaltsgeräte. Wir sind montags bis freitags von 8 bis 17 Uhr erreichbar. "
+            "Bei dringenden Notfällen am Wochenende erreichen Sie unseren Notdienst unter der Sondernummer 0170/987654. "
+            "Die Anfahrtskosten innerhalb der Stadt sind für alle Kunden kostenlos."
+        ),
+        "question": "Wann soll ein Kunde die Sondernummer für den Notdienst anrufen?",
+        "options": [
+            "Ausschließlich montags um 10 Uhr morgens.",
+            "Bei dringenden Notfällen am Wochenende.",
+            "Wenn er ein ganz neues Gerät kaufen möchte.",
+            "An jedem Werktag nach 12 Uhr mittags."
+        ],
+        "correct_index": 1,
+        "explanation": "Im Text: 'Bei dringenden Notfällen am Wochenende erreichen Sie unseren Notdienst unter der Sondernummer...'."
+    }
+]
+
+def score_telc_lesen_module(answers: List[int]) -> Tuple[int, List[Dict[str, Any]]]:
+    """Детерминированный подсчет telc Lesen (0-75 баллов)"""
+    score = 0
+    errors = []
+    for idx, t in enumerate(TELC_B1_LESEN_TASKS):
+        ans = answers[idx] if idx < len(answers) else -1
+        if ans == t["correct_index"]:
+            score += t["points"]
+        else:
+            errors.append({
+                "module": "telc_lesen",
+                "task_id": t["id"],
+                "topic": t["title"],
+                "explanation": t["explanation"]
+            })
+    return score, errors
+
+
+# ----------------- МОДУЛЬ 2: TELC SPRACHBAUSTEINE (5 заданий, макс 30 баллов) -----------------
+TELC_B1_SPRACHBAUSTEINE_INTRO = (
+    "Liebe Katja,\n\n"
+    "ich habe dir lange nicht geschrieben, [...] (1) ich in den letzten Wochen viel Stress hatte. "
+    "Wie du weißt, bin ich [...] (2) Berlin umgezogen. Die Wohnungssuche war ziemlich schwer, aber ein Kollege "
+    "hat [...] (3) geholfen. Ich fühle [...] (4) hier schon sehr wohl. Am Samstag mache ich eine Party "
+    "und habe schon viele Freunde [...] (5). Hast du Zeit zu kommen?\n\n"
+    "Herzliche Grüße,\n"
+    "Julia"
+)
+
+TELC_B1_SPRACHBAUSTEINE_TASKS: List[Dict[str, Any]] = [
+    {
+        "id": "sb_1",
+        "gap": 1,
+        "points": 6,
+        "prompt": "Lücke (1): '...ich habe dir lange nicht geschrieben, [...] ich in den letzten Wochen viel Stress hatte.'",
+        "options": ["weil", "obwohl", "trotzdem", "deshalb"],
+        "correct_index": 0,
+        "explanation": "'Weil' leitet einen Kausalsatz mit konjugiertem Verb am Ende ein."
+    },
+    {
+        "id": "sb_2",
+        "gap": 2,
+        "points": 6,
+        "prompt": "Lücke (2): 'Wie du weißt, bin ich [...] Berlin umgezogen.'",
+        "options": ["nach", "in", "zu", "bei"],
+        "correct_index": 0,
+        "explanation": "Richtung zu Städten ohne Artikel erfordert 'nach': nach Berlin."
+    },
+    {
+        "id": "sb_3",
+        "gap": 3,
+        "points": 6,
+        "prompt": "Lücke (3): '...aber ein Kollege hat [...] geholfen.'",
+        "options": ["mir", "mich", "meinem", "ich"],
+        "correct_index": 0,
+        "explanation": "Das Verb 'helfen' verlangt Dativ: mir geholfen."
+    },
+    {
+        "id": "sb_4",
+        "gap": 4,
+        "points": 6,
+        "prompt": "Lücke (4): 'Ich fühle [...] hier schon sehr wohl.'",
+        "options": ["mich", "sich", "mir", "uns"],
+        "correct_index": 0,
+        "explanation": "Reflexivpronomen für 'ich': sich wohlfühlen -> ich fühle mich."
+    },
+    {
+        "id": "sb_5",
+        "gap": 5,
+        "points": 6,
+        "prompt": "Lücke (5): '...und habe schon viele Freunde [...].'",
+        "options": ["eingeladen", "einladen", "eingeladet", "eingeladene"],
+        "correct_index": 0,
+        "explanation": "Partizip II von einladen: hat eingeladen."
+    }
+]
+
+def score_telc_sprachbausteine_module(answers: List[int]) -> Tuple[int, List[Dict[str, Any]]]:
+    """Детерминированный подсчет модуля Sprachbausteine (0-30 баллов)"""
+    score = 0
+    errors = []
+    for idx, t in enumerate(TELC_B1_SPRACHBAUSTEINE_TASKS):
+        ans = answers[idx] if idx < len(answers) else -1
+        if ans == t["correct_index"]:
+            score += t["points"]
+        else:
+            errors.append({
+                "module": "sprachbausteine",
+                "task_id": t["id"],
+                "topic": f"Sprachbaustein {t['gap']}",
+                "explanation": t["explanation"]
+            })
+    return score, errors
+
+
+# ----------------- МОДУЛЬ 3: TELC HÖREN (2 аудиоситуации, макс 75 баллов) -----------------
+TELC_B1_HOEREN_TASKS: List[Dict[str, Any]] = [
+    {
+        "id": "telc_hoe_1",
+        "title": "Hören Teil 1: Durchsage am Hauptbahnhof",
+        "points": 38,
+        "audio_script": (
+            "Achtung an Gleis 4: Der Regional-Express nach Rostock mit der planmäßigen Abfahrt um 10 Uhr 15 "
+            "fährt heute abweichend von Gleis 9 ein. Bitte beachten Sie die geänderte Wagenreihung. "
+            "Erste Klasse befindet sich im vorderen Zugteil."
+        ),
+        "question": "Von welchem Gleis fährt der Zug nach Rostock heute ab?",
+        "options": [
+            "Von Gleis 4.",
+            "Von Gleis 9.",
+            "Von Gleis 1.",
+            "Der Zug fällt heute ganz aus."
+        ],
+        "correct_index": 1,
+        "explanation": "Im Audio: 'fährt heute abweichend von Gleis 9 ein'."
+    },
+    {
+        "id": "telc_hoe_2",
+        "title": "Hören Teil 2: Radiobericht über Fahrradstraßen",
+        "points": 37,
+        "audio_script": (
+            "In unserer Sendung 'Stadt der Zukunft' berichten wir heute aus Freiburg: Hier wurden im vergangenen Jahr "
+            "fünf neue Fahrradstraßen eröffnet. Autos dürfen diese Straßen nur noch mit maximal 30 Kilometern pro Stunde befahren. "
+            "Laut einer aktuellen Umfrage fühlen sich über 80 Prozent der Radfahrer nun deutlich sicherer im Straßenverkehr."
+        ),
+        "question": "Was gilt für Autofahrer auf den neuen Fahrradstraßen in Freiburg?",
+        "options": [
+            "Autos sind dort vollständig verboten.",
+            "Autofahrer dürfen maximal 30 km/h fahren.",
+            "Autofahrer müssen eine Maut bezahlen.",
+            "Autos haben immer Vorfahrt vor Fahrrädern."
+        ],
+        "correct_index": 1,
+        "explanation": "Im Audio: 'Autos dürfen diese Straßen nur noch mit maximal 30 Kilometern pro Stunde befahren'."
+    }
+]
+
+def score_telc_hoeren_module(answers: List[int]) -> Tuple[int, List[Dict[str, Any]]]:
+    """Детерминированный подсчет telc Hören (0-75 баллов)"""
+    score = 0
+    errors = []
+    for idx, t in enumerate(TELC_B1_HOEREN_TASKS):
+        ans = answers[idx] if idx < len(answers) else -1
+        if ans == t["correct_index"]:
+            score += t["points"]
+        else:
+            errors.append({
+                "module": "telc_hoeren",
+                "task_id": t["id"],
+                "topic": t["title"],
+                "explanation": t["explanation"]
+            })
+    return score, errors
+
+
+# ----------------- МОДУЛЬ 4: TELC SCHREIBEN (Письмо, макс 45 баллов) -----------------
+TELC_B1_SCHREIBEN_PROMPT = {
+    "task_id": "telc_schreib_b1",
+    "prompt_de": (
+        "Situation: Sie haben vor zwei Wochen einen Sprachkurs gebucht, können aber aus beruflichen Gründen "
+        "nicht mehr an den gebuchten Terminen teilnehmen.\n\n"
+        "Schreiben Sie eine E-Mail an die Sprachschule (ca. 50 bis 80 Wörter).\n"
+        "Behandeln Sie alle drei Leitpunkte:\n"
+        "1. Grund für das Schreiben und Angaben zu Ihrem Kurs.\n"
+        "2. Erklärung, warum Sie die Termine ändern müssen.\n"
+        "3. Bitte um Umbuchung in einen Abendkurs oder am Wochenende."
+    ),
+    "target_words": "50-80 Wörter"
+}
+
+RUBRIC_TELC_WRITING_SYSTEM_INSTRUCTION = """
+Du bist ein erfahrener Deutsch-Dozent und lizensierter Prüfer für telc Deutsch B1 Diagnostik.
+Bewerte die schriftliche Leistung streng nach der offiziellen telc-Skala (maximal 45 Punkte):
+
+KRITERIEN (max 45 Punkte):
+1. task_completion (0-15 Punkte): Wurden alle 3 Leitpunkte sinnvoll, logisch und vollständig behandelt?
+2. grammar (0-15 Punkte): Formale Richtigkeit, Syntax (Haupt- und Nebensätze), Verbflexion und Kasus.
+3. vocabulary_orthography (0-15 Punkte): Angemessenheit des Wortschatzes, Textkohäsion, Anrede, Grußformel und Rechtschreibung.
+
+REGELN:
+- Antworte AUSSCHLIESSLICH als valides JSON! Keine Markdown-Backticks vor oder nach dem JSON, kein Freitext!
+- JSON-Format:
+{
+  "score": <Summe der 3 Kriterien, 0 bis 45>,
+  "confidence": <Zahl von 0.70 bis 0.99>,
+  "criteria": {
+    "task_completion": <0-15>,
+    "grammar": <0-15>,
+    "vocabulary_orthography": <0-15>
+  },
+  "writing_profile": {
+    "task_completion": <0-15>,
+    "grammar": <0-15>,
+    "vocabulary": <0-15>,
+    "organization": <0-15>
+  },
+  "weak_points": [
+    {
+      "category": "grammar|vocabulary|structure",
+      "topic": "subordinate_clauses|cases|formal_register",
+      "severity": "high|medium",
+      "explanation_ru": "Краткое объяснение ошибки на русском",
+      "explanation_en": "Brief explanation in English"
+    }
+  ],
+  "strengths_ru": ["Что получилось хорошо"],
+  "strengths_en": ["What was done well"],
+  "improved_sample": "Musterbrief auf Deutsch (50-70 Wörter)"
+}
+"""
+
+async def evaluate_telc_schreiben_module(user_text: str, native_lang: str = "ru") -> Dict[str, Any]:
+    """Оценка письменной части telc B1 (0-45 баллов) через Gemini"""
+    client = get_ai_client()
+    user_prompt = f"""
+Aufgabe telc B1 Brief:
+{TELC_B1_SCHREIBEN_PROMPT['prompt_de']}
+
+Text des Schülers:
+"{user_text}"
+
+Bewerte den Text jetzt nach der offiziellen telc 45-Punkte-Rubrik und gib striktes JSON zurück!
+"""
+    models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    for model_name in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"parts": [{"text": user_prompt}]}],
+            "systemInstruction": {"parts": [{"text": RUBRIC_TELC_WRITING_SYSTEM_INSTRUCTION}]},
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 900
+            }
+        }
+        try:
+            res = await client.post(url, json=payload, timeout=20.0)
+            if res.status_code == 200:
+                data = res.json()
+                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parsed = json.loads(raw_text)
+                return parsed
+        except Exception as e:
+            logger.warning(f"Ошибка модели {model_name} при оценке telc Schreiben: {e}")
+            continue
+
+    # Fallback
+    words = len(user_text.split())
+    base_score = min(35, max(18, words // 2))
+    return {
+        "score": base_score,
+        "confidence": 0.70,
+        "criteria": {
+            "task_completion": 10,
+            "grammar": 9,
+            "vocabulary_orthography": 9
+        },
+        "writing_profile": {
+            "task_completion": 10,
+            "grammar": 9,
+            "vocabulary": 9,
+            "organization": 9
+        },
+        "weak_points": [
+            {
+                "category": "grammar",
+                "topic": "formal_register",
+                "severity": "medium",
+                "explanation_ru": "Соблюдай вежливый стиль обращения (Sehr geehrte Damen und Herren, mit freundlichen Grüßen).",
+                "explanation_en": "Keep the formal register (Dear Sir or Madam, Best regards)."
+            }
+        ],
+        "strengths_ru": ["Ты передал суть просьбы и описал проблему."],
+        "strengths_en": ["You explained your request and described the problem."],
+        "improved_sample": "Sehr geehrte Damen und Herren, ich besuche derzeit den B1-Kurs, muss meine Termine jedoch wegen neuer Arbeitszeiten anpassen. Wäre ein Wechsel in den Abendkurs möglich? Mit freundlichen Grüßen!"
+    }
+
+
+# ----------------- МОДУЛЬ 5: TELC SPRECHEN (Устная часть, макс 75 баллов) -----------------
+TELC_B1_SPRECHEN_TASKS = {
+    "part1": {
+        "title": "Teil 1: Kontaktaufnahme",
+        "prompt_de": "Stellen Sie sich Ihrem Gesprächspartner kurz vor: Name, Beruf, wie lange Sie schon Deutsch lernen und was Sie in Ihrer Freizeit gerne machen.",
+        "target": "3-4 Sätze Vorstellung",
+        "points": 15
+    },
+    "part2": {
+        "title": "Teil 2: Gespräch über ein Thema",
+        "prompt_de": "Thema: 'Sport und Bewegung im Alltag'. Berichten Sie über Ihre Erfahrungen: Warum ist Bewegung wichtig? Treiben Sie selbst Sport oder fehlt Ihnen die Zeit dazu?",
+        "target": "Sprachnachricht ca. 45-60 Sek",
+        "points": 30
+    },
+    "part3": {
+        "title": "Teil 3: Gemeinsam eine Aufgabe lösen",
+        "prompt_de": "Sie planen mit einem Kollegen einen Ausflug für das Team. Machen Sie 1-2 Vorschläge: Wohin soll es gehen und wie fahren Sie dorthin?",
+        "target": "2-3 Sätze Planung",
+        "points": 30
+    }
+}
+
+RUBRIC_TELC_SPEAKING_SYSTEM_INSTRUCTION = """
+Du bist ein erfahrener Deutsch-Dozent und Prüfer für telc Deutsch B1 Sprechen Diagnostik.
+Bewerte die mündliche Leistung streng nach der offiziellen telc-Skala (maximal 75 Punkte):
+
+KRITERIEN (max 75 Punkte):
+1. fluency_expression (0-25 Punkte): Flüssigkeit des Sprechens, Sprechtempo, Angemessenheit von Pausen.
+2. task_completion (0-25 Punkte): Wurden alle drei Teile (Vorstellung, Thema, Planung) verständlich bewältigt?
+3. grammar_pronunciation (0-25 Punkte): Richtigkeit der Satzstrukturen, Wortschatz und Verständlichkeit der Aussprache.
+
+REGELN:
+- Antworte AUSSCHLIESSLICH als valides JSON! Keine Markdown-Backticks vor oder nach dem JSON, kein Freitext!
+- JSON-Format:
+{
+  "score": <Summe der 3 Kriterien, 0 bis 75>,
+  "confidence": <Zahl von 0.70 bis 0.99>,
+  "criteria": {
+    "fluency_expression": <0-25>,
+    "task_completion": <0-25>,
+    "grammar_pronunciation": <0-25>
+  },
+  "speaking_profile": {
+    "fluency": <0-25>,
+    "grammar": <0-25>,
+    "vocabulary": <0-25>,
+    "pronunciation": <0-25>,
+    "task_completion": <0-25>
+  },
+  "weak_points": [
+    {
+      "category": "speaking",
+      "topic": "speaking_fluency",
+      "severity": "medium",
+      "explanation_ru": "Краткое объяснение ошибки на русском",
+      "explanation_en": "Brief explanation in English"
+    }
+  ],
+  "strengths_ru": ["Что получилось хорошо"],
+  "strengths_en": ["What was done well"],
+  "muster_antwort": "Flüssiges deutsches Beispiel"
+}
+"""
+
+async def evaluate_telc_sprechen_module(
+    transcribed_answers: Dict[str, str],
+    native_lang: str = "ru"
+) -> Dict[str, Any]:
+    """Оценка устной части telc B1 (0-75 баллов) через Gemini"""
+    client = get_ai_client()
+    combined_transcript = (
+        f"Teil 1 (Kontaktaufnahme): {transcribed_answers.get('part1', '')}\n"
+        f"Teil 2 (Thema): {transcribed_answers.get('part2', '')}\n"
+        f"Teil 3 (Planung): {transcribed_answers.get('part3', '')}"
+    )
+
+    user_prompt = f"""
+Leistung des Schülers in der mündlichen telc B1-Prüfung:
+{combined_transcript}
+
+Bewerte die mündliche Leistung jetzt streng nach der offiziellen telc 75-Punkte-Rubrik und gib striktes JSON zurück!
+"""
+    models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    for model_name in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"parts": [{"text": user_prompt}]}],
+            "systemInstruction": {"parts": [{"text": RUBRIC_TELC_SPEAKING_SYSTEM_INSTRUCTION}]},
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 900
+            }
+        }
+        try:
+            res = await client.post(url, json=payload, timeout=20.0)
+            if res.status_code == 200:
+                data = res.json()
+                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parsed = json.loads(raw_text)
+                return parsed
+        except Exception as e:
+            logger.warning(f"Ошибка модели {model_name} при оценке telc Sprechen: {e}")
+            continue
+
+    # Fallback
+    return {
+        "score": 48,
+        "confidence": 0.70,
+        "criteria": {
+            "fluency_expression": 16,
+            "task_completion": 16,
+            "grammar_pronunciation": 16
+        },
+        "speaking_profile": {
+            "fluency": 16,
+            "grammar": 16,
+            "vocabulary": 16,
+            "pronunciation": 16,
+            "task_completion": 16
+        },
+        "weak_points": [
+            {
+                "category": "speaking",
+                "topic": "speaking_fluency",
+                "severity": "medium",
+                "explanation_ru": "Старайся делать меньше пауз при переходе между мыслями.",
+                "explanation_en": "Try to pause less when transitioning between ideas."
+            }
+        ],
+        "strengths_ru": ["Ответ связный и понятный для собеседника."],
+        "strengths_en": ["Speech is coherent and understandable."],
+        "muster_antwort": "Ich treibe zweimal pro Woche Sport, weil es mir hilft, nach der Arbeit den Kopf freizubekommen."
+    }
+
+
+def calculate_telc_readiness_overall(
+    lesen_score: int,
+    sprachbausteine_score: int,
+    hoeren_score: int,
+    schreiben_score: int,
+    sprechen_score: int
+) -> Tuple[str, int, int, int, str, str]:
+    """
+    Расчет готовности к telc Deutsch B1 по официальной 300-балльной системе:
+    - Письменная часть (Schriftlich): max 225 баллов, порог сдачи: >= 135 баллов (60%).
+    - Устная часть (Mündlich): max 75 баллов, порог сдачи: >= 45 баллов (60%).
+    - Общий результат: max 300 баллов, порог сдачи: >= 180 баллов (60%).
+    Возвращает: (status, schriftlich_score, muendlich_score, total_points, grade_label, weakest_part)
+    """
+    schriftlich = lesen_score + sprachbausteine_score + hoeren_score + schreiben_score
+    muendlich = sprechen_score
+    total_points = schriftlich + muendlich
+
+    schriftlich_pass = schriftlich >= 135
+    muendlich_pass = muendlich >= 45
+
+    if total_points >= 270 and schriftlich_pass and muendlich_pass:
+        grade = "1 (Sehr gut)"
+        status = "STRONG"
+    elif total_points >= 240 and schriftlich_pass and muendlich_pass:
+        grade = "2 (Gut)"
+        status = "STRONG"
+    elif total_points >= 210 and schriftlich_pass and muendlich_pass:
+        grade = "3 (Befriedigend)"
+        status = "LIKELY_READY"
+    elif total_points >= 180 and schriftlich_pass and muendlich_pass:
+        grade = "4 (Ausreichend / Bestanden)"
+        status = "LIKELY_READY"
+    elif schriftlich_pass and not muendlich_pass:
+        grade = "Teilweise bestanden (nur schriftlich)"
+        status = "NEAR_PASS"
+    elif muendlich_pass and not schriftlich_pass:
+        grade = "Teilweise bestanden (nur mündlich)"
+        status = "NEAR_PASS"
+    else:
+        grade = "Nicht bestanden"
+        status = "NOT_READY"
+
+    parts_pct = {
+        "lesen": lesen_score / 75.0,
+        "sprachbausteine": sprachbausteine_score / 30.0,
+        "hoeren": hoeren_score / 75.0,
+        "schreiben": schreiben_score / 45.0,
+        "sprechen": sprechen_score / 75.0
+    }
+    weakest = min(parts_pct, key=parts_pct.get)
+
+    return status, schriftlich, muendlich, total_points, grade, weakest
+
