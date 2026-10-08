@@ -896,7 +896,7 @@ async def test_onboarding_language_flow():
     assert "Welcome, Alex! I am Stork" in caption_call
     onboard_reply_kb = cb.message.edit_caption.call_args[1]["reply_markup"]
     btn_callbacks = [btn.callback_data for row in onboard_reply_kb.inline_keyboard for btn in row]
-    assert "placement_start" in btn_callbacks
+    assert "diag_express_start" in btn_callbacks
     assert "back_to_menu" in btn_callbacks
     cb.answer.assert_called_once()
 
@@ -1158,6 +1158,177 @@ async def test_words_quota_and_lifetime_exam_limits():
     assert allowed is False
     assert total_used == 3
     assert max_lim == 3
+
+def test_diagnostic_express_evaluation():
+    """Тест детерминированной оценки экспресс-теста (B1, A2, A1)"""
+    from services.diagnostic_service import EXPRESS_QUESTIONS, evaluate_express_diagnostic
+
+    assert len(EXPRESS_QUESTIONS) == 8
+
+    # 1. Все правильные ответы -> B1 (100%)
+    all_correct = [q["correct_index"] for q in EXPRESS_QUESTIONS]
+    res_b1 = evaluate_express_diagnostic(all_correct)
+    assert res_b1["estimated_cefr"] == "B1"
+    assert res_b1["score_pct"] == 100
+    assert res_b1["correct"] == 8
+    assert len(res_b1["weaknesses"]) == 0
+
+    # 2. 5 правильных ответов -> A2
+    part_correct = [q["correct_index"] if i < 5 else (q["correct_index"] + 1) % 4 for i, q in enumerate(EXPRESS_QUESTIONS)]
+    res_a2 = evaluate_express_diagnostic(part_correct)
+    assert res_a2["estimated_cefr"] == "A2"
+    assert res_a2["correct"] == 5
+    assert len(res_a2["weaknesses"]) == 3
+
+    # 3. 2 правильных ответа -> A1
+    low_correct = [q["correct_index"] if i < 2 else (q["correct_index"] + 1) % 4 for i, q in enumerate(EXPRESS_QUESTIONS)]
+    res_a1 = evaluate_express_diagnostic(low_correct)
+    assert res_a1["estimated_cefr"] == "A1"
+    assert res_a1["correct"] == 2
+
+def test_diagnostic_goethe_modules_scoring():
+    """Тест детерминированного подсчета баллов для модулей Lesen и Hören"""
+    from services.diagnostic_service import (
+        GOETHE_B1_LESEN_TASKS,
+        score_lesen_module,
+        GOETHE_B1_HOEREN_TASKS,
+        score_hoeren_module
+    )
+
+    assert len(GOETHE_B1_LESEN_TASKS) == 4
+    assert len(GOETHE_B1_HOEREN_TASKS) == 2
+
+    # Lesen: все верны -> 100
+    lesen_correct = [t["correct_index"] for t in GOETHE_B1_LESEN_TASKS]
+    score_les, errs_les = score_lesen_module(lesen_correct)
+    assert score_les == 100
+    assert len(errs_les) == 0
+
+    # Lesen: 2 из 4 -> 50
+    lesen_half = [lesen_correct[0], lesen_correct[1], (lesen_correct[2] + 1) % 4, (lesen_correct[3] + 1) % 4]
+    score_les_half, errs_les_half = score_lesen_module(lesen_half)
+    assert score_les_half == 50
+    assert len(errs_les_half) == 2
+
+    # Hören: все верны -> 100
+    hoeren_correct = [t["correct_index"] for t in GOETHE_B1_HOEREN_TASKS]
+    score_hoe, errs_hoe = score_hoeren_module(hoeren_correct)
+    assert score_hoe == 100
+    assert len(errs_hoe) == 0
+
+    # Hören: 1 из 2 -> 50
+    hoeren_half = [hoeren_correct[0], (hoeren_correct[1] + 1) % 4]
+    score_hoe_half, errs_hoe_half = score_hoeren_module(hoeren_half)
+    assert score_hoe_half == 50
+    assert len(errs_hoe_half) == 1
+
+def test_calculate_readiness_overall():
+    """Тест категоризации статуса готовности к Goethe B1"""
+    from services.diagnostic_service import calculate_readiness_overall
+
+    # STRONG: все >= 70
+    status, overall, failed_cnt, weakest = calculate_readiness_overall(75, 80, 70, 85)
+    assert status == "STRONG"
+    assert overall == 78
+    assert failed_cnt == 0
+    assert weakest == "schreiben"
+
+    # LIKELY_READY: все >= 60, но есть < 70
+    status, overall, failed_cnt, weakest = calculate_readiness_overall(65, 75, 60, 70)
+    assert status == "LIKELY_READY"
+    assert failed_cnt == 0
+    assert weakest == "schreiben"
+
+    # NEAR_PASS: один или два модуля в диапазоне 50-59 (в шаге от сдачи)
+    status, overall, failed_cnt, weakest = calculate_readiness_overall(75, 70, 55, 65)
+    assert status == "NEAR_PASS"
+    assert failed_cnt == 1
+    assert weakest == "schreiben"
+
+    # NOT_READY: хотя бы один модуль < 50
+    status, overall, failed_cnt, weakest = calculate_readiness_overall(80, 85, 45, 70)
+    assert status == "NOT_READY"
+    assert failed_cnt == 1
+    assert weakest == "schreiben"
+
+def test_build_recommendations_and_actions():
+    """Тест маршрутизатора рекомендаций: преобразование ошибок в кнопки тренировок"""
+    from services.diagnostic_service import build_recommendations_and_actions
+
+    weak_points = [
+        {"topic": "dativ_akkusativ", "explanation_ru": "Ошибки в Dativ/Akkusativ"},
+        {"topic": "subordinate_clause_word_order", "explanation_ru": "Порядок слов после weil"},
+        {"topic": "speaking_fluency", "explanation_ru": "Паузы в речи"}
+    ]
+    scores = {"lesen": 55, "hoeren": 70, "schreiben": 58, "sprechen": 50}
+
+    actions = build_recommendations_and_actions(weak_points, scores, native_lang="ru")
+    action_ids = [a["action_id"] for a in actions]
+    callbacks = [a["btn_callback"] for a in actions]
+
+    assert "train_cases" in action_ids
+    assert "menu_articles" in callbacks
+
+    assert "train_verbs" in action_ids
+    assert "menu_verbs_sprint" in callbacks
+
+    assert "train_ai_speech" in action_ids
+    assert "menu_ai" in callbacks
+
+@pytest.mark.anyio
+async def test_diagnostic_database_persistence():
+    """Тест сохранения и получения результатов диагностики и профиля обучения"""
+    from database import db
+    import aiosqlite
+
+    test_uid = 999333221
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM diagnostic_history WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM user_learning_profile WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+    await db.get_or_create_user(test_uid, "diag_persister", "Martin")
+
+    # 1. Сохранение диагностики Goethe B1
+    diag_id = await db.save_diagnostic_result(
+        user_id=test_uid,
+        exam_type="goethe_b1",
+        exam_version="goethe_b1_v1",
+        diagnostic_type="readiness",
+        cefr_estimate="B1",
+        readiness_status="LIKELY_READY",
+        overall_diagnostic_score=68,
+        lesen_score=75,
+        hoeren_score=70,
+        schreiben_score=62,
+        sprechen_score=65,
+        module_results={"lesen": 75, "hoeren": 70, "schreiben": 62, "sprechen": 65},
+        weak_points=[{"topic": "dativ_akkusativ"}],
+        strengths=["Guter Satzbau"],
+        recommendations=[{"action_id": "train_cases"}]
+    )
+    assert diag_id > 0
+
+    # 2. Получение последней диагностики
+    latest = await db.get_latest_diagnostic(test_uid, exam_type="goethe_b1")
+    assert latest is not None
+    assert latest["cefr_estimate"] == "B1"
+    assert latest["readiness_status"] == "LIKELY_READY"
+    assert latest["overall_diagnostic_score"] == 68
+    assert latest["lesen_score"] == 75
+    assert latest["hoeren_score"] == 70
+    assert latest["schreiben_score"] == 62
+    assert latest["sprechen_score"] == 65
+    assert len(latest["weak_points"]) == 1
+
+    # 3. Проверка обновления профиля обучения
+    profile = await db.get_or_create_learning_profile(test_uid)
+    assert profile["target_exam"] == "goethe_b1"
+    assert profile["estimated_cefr"] == "B1"
+    assert profile["readiness_status"] == "LIKELY_READY"
+    assert profile["last_diagnostic_id"] == diag_id
+
 
 
 

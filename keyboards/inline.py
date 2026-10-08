@@ -31,10 +31,12 @@ def get_onboarding_language_keyboard() -> InlineKeyboardMarkup:
 
 def get_onboarding_welcome_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Клавиатура после выбора языка: предложить пройти тест или войти в главное меню"""
-    test_btn = "🎓 Пройти тест на уровень (~2 мин)" if lang == "ru" else "🎓 Take Level Test (~2 min)"
+    test_btn = "⚡ Экспресс-проверка уровня (~2 мин)" if lang == "ru" else "⚡ Express Level Check (~2 min)"
+    exam_btn = "🎯 Goethe B1 Readiness Test (~25 мин)" if lang == "ru" else "🎯 Goethe B1 Readiness Test (~25 min)"
     menu_btn = i18n.get("btn_main_menu", lang)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=test_btn, callback_data="placement_start")],
+        [InlineKeyboardButton(text=test_btn, callback_data="diag_express_start")],
+        [InlineKeyboardButton(text=exam_btn, callback_data="diag_goethe_start")],
         [InlineKeyboardButton(text=menu_btn, callback_data="back_to_menu")]
     ])
 
@@ -95,10 +97,21 @@ def get_vocab_hub_keyboard(lang: str = "ru", review_count: int = 0, level: str =
 def get_exams_hub_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Подменю: Экзамены и сертификация"""
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🎯 Goethe B1: Проверка готовности (~25 мин)" if lang == "ru" else "🎯 Goethe B1 Readiness Test (~25 min)",
+            callback_data="diag_goethe_start"
+        )],
+        [InlineKeyboardButton(
+            text="⚡ Экспресс-проверка уровня (2-3 мин)" if lang == "ru" else "⚡ Express Level Check (2-3 min)",
+            callback_data="diag_express_start"
+        )],
+        [InlineKeyboardButton(
+            text="📊 Мой профиль и слабые места" if lang == "ru" else "📊 My Profile & Weak Points",
+            callback_data="diag_my_profile"
+        )],
         [InlineKeyboardButton(text=i18n.get("btn_exam_trainer", lang), callback_data="menu_exam")],
         [InlineKeyboardButton(text=i18n.get("btn_exam_sprechen", lang), callback_data="menu_sprechen")],
         [InlineKeyboardButton(text=i18n.get("btn_exam_listening", lang), callback_data="menu_listening")],
-        [InlineKeyboardButton(text=i18n.get("btn_placement_test", lang), callback_data="menu_placement")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 
@@ -560,6 +573,109 @@ def get_roleplay_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=i18n.get("btn_hub_training", lang), callback_data="hub_training")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
+
+def get_diagnostic_choice_keyboard(lang: str = "ru", has_history: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура выбора типа теста в диагностическом центре Stork"""
+    buttons = [
+        [InlineKeyboardButton(
+            text="⚡ Экспресс-проверка уровня (2-3 мин)" if lang == "ru" else "⚡ Express Level Check (2-3 min)",
+            callback_data="diag_express_start"
+        )],
+        [InlineKeyboardButton(
+            text="🎯 Goethe B1: Проверка готовности (25-30 мин)" if lang == "ru" else "🎯 Goethe B1 Readiness Test (25-30 min)",
+            callback_data="diag_goethe_start"
+        )]
+    ]
+    if has_history:
+        buttons.append([InlineKeyboardButton(
+            text="📊 Мой профиль и рекомендации" if lang == "ru" else "📊 My Results & Weak Points",
+            callback_data="diag_my_profile"
+        )])
+    buttons.append([InlineKeyboardButton(
+        text=i18n.get("btn_main_menu", lang),
+        callback_data="back_to_menu"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_express_question_keyboard(q_idx: int, options: List[str], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура для вопроса экспресс-теста"""
+    buttons = []
+    for idx, opt in enumerate(options):
+        buttons.append([InlineKeyboardButton(text=opt, callback_data=f"exp_ans:{q_idx}:{idx}")])
+    buttons.append([InlineKeyboardButton(
+        text="❌ Прервать тест" if lang == "ru" else "❌ Cancel Test",
+        callback_data="diag_cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_express_result_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после завершения экспресс-теста"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🎯 Пройти Goethe B1 Readiness Test" if lang == "ru" else "🎯 Take Goethe B1 Readiness Test",
+            callback_data="diag_goethe_start"
+        )],
+        [InlineKeyboardButton(
+            text="🔄 Повторить экспресс-тест" if lang == "ru" else "🔄 Retake Express Check",
+            callback_data="diag_express_start"
+        )],
+        [InlineKeyboardButton(
+            text=i18n.get("btn_main_menu", lang),
+            callback_data="back_to_menu"
+        )]
+    ])
+
+def get_goethe_intro_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура перед стартом полного Goethe B1 теста"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🚀 Начать: Модуль 1 (Lesen)" if lang == "ru" else "🚀 Start: Module 1 (Lesen)",
+            callback_data="gb1_start_lesen"
+        )],
+        [InlineKeyboardButton(
+            text="🔙 Назад в меню тестов" if lang == "ru" else "🔙 Back to Test Menu",
+            callback_data="diag_hub"
+        )]
+    ])
+
+def get_goethe_question_keyboard(prefix: str, q_idx: int, options: List[str], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура для вопросов модулей Lesen и Hören"""
+    buttons = []
+    for idx, opt in enumerate(options):
+        buttons.append([InlineKeyboardButton(text=opt, callback_data=f"gb1_{prefix}:{q_idx}:{idx}")])
+    buttons.append([InlineKeyboardButton(
+        text="❌ Прервать тест" if lang == "ru" else "❌ Cancel Test",
+        callback_data="diag_cancel"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_goethe_cancel_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой отмены для открытых модулей (Schreiben, Sprechen)"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="❌ Прервать тест" if lang == "ru" else "❌ Cancel Test",
+            callback_data="diag_cancel"
+        )]
+    ])
+
+def get_diagnostic_recommendations_keyboard(actions: List[Dict[str, Any]], lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура персонального плана тренировок с прямыми кнопками перехода"""
+    buttons = []
+    for act in actions:
+        buttons.append([InlineKeyboardButton(
+            text=act["title"],
+            callback_data=act["btn_callback"]
+        )])
+    buttons.append([InlineKeyboardButton(
+        text="🎯 Пройти тест повторно" if lang == "ru" else "🎯 Retake Goethe B1 Test",
+        callback_data="diag_goethe_start"
+    )])
+    buttons.append([InlineKeyboardButton(
+        text=i18n.get("btn_main_menu", lang),
+        callback_data="back_to_menu"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 
 

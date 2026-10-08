@@ -149,6 +149,56 @@ async def init_db():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_translations_lang ON word_translations(lang);")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_lang ON users(native_lang);")
 
+        # Таблица истории диагностик и Readiness-тестов
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS diagnostic_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            exam_type TEXT NOT NULL,
+            exam_version TEXT DEFAULT 'v1',
+            diagnostic_type TEXT DEFAULT 'readiness',
+            cefr_estimate TEXT,
+            readiness_status TEXT DEFAULT 'NOT_READY',
+            overall_diagnostic_score INTEGER DEFAULT 0,
+            lesen_score INTEGER DEFAULT 0,
+            hoeren_score INTEGER DEFAULT 0,
+            schreiben_score INTEGER DEFAULT 0,
+            sprechen_score INTEGER DEFAULT 0,
+            sprachbausteine_score INTEGER,
+            raw_rubric_scores TEXT DEFAULT '{}',
+            module_results_json TEXT DEFAULT '{}',
+            weak_points_json TEXT DEFAULT '[]',
+            strengths_json TEXT DEFAULT '[]',
+            recommendations_json TEXT DEFAULT '[]',
+            speaking_profile_json TEXT DEFAULT '{}',
+            writing_profile_json TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_diag_user ON diagnostic_history(user_id);")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_diag_type ON diagnostic_history(exam_type, diagnostic_type);")
+
+        # Таблица персонализированного профиля обучения ученика
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS user_learning_profile (
+            user_id INTEGER PRIMARY KEY,
+            target_exam TEXT DEFAULT 'goethe_b1',
+            target_level TEXT DEFAULT 'B1',
+            exam_date TEXT DEFAULT '',
+            estimated_cefr TEXT DEFAULT 'A1',
+            readiness_status TEXT DEFAULT 'NOT_READY',
+            last_diagnostic_id INTEGER DEFAULT 0,
+            weaknesses_json TEXT DEFAULT '[]',
+            strengths_json TEXT DEFAULT '[]',
+            recommendations_json TEXT DEFAULT '[]',
+            speaking_profile_json TEXT DEFAULT '{}',
+            writing_profile_json TEXT DEFAULT '{}',
+            last_reassessment_at TIMESTAMP,
+            next_reassessment_at TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -1317,6 +1367,183 @@ async def check_and_grant_achievements(user_id: int) -> List[Dict[str, Any]]:
         if a: newly_unlocked.append(a)
 
     return newly_unlocked
+
+# ==========================================
+# ДИАГНОСТИКА И ПРОФИЛЬ ОБУЧЕНИЯ (READINESS)
+# ==========================================
+import json
+
+async def save_diagnostic_result(
+    user_id: int,
+    exam_type: str,
+    exam_version: str = "v1",
+    diagnostic_type: str = "readiness",
+    cefr_estimate: str = "A2",
+    readiness_status: str = "NOT_READY",
+    overall_diagnostic_score: int = 0,
+    lesen_score: int = 0,
+    hoeren_score: int = 0,
+    schreiben_score: int = 0,
+    sprechen_score: int = 0,
+    sprachbausteine_score: Optional[int] = None,
+    raw_rubric_scores: Optional[Dict[str, Any]] = None,
+    module_results: Optional[Dict[str, Any]] = None,
+    weak_points: Optional[List[Any]] = None,
+    strengths: Optional[List[Any]] = None,
+    recommendations: Optional[List[Any]] = None,
+    speaking_profile: Optional[Dict[str, Any]] = None,
+    writing_profile: Optional[Dict[str, Any]] = None,
+) -> int:
+    """Сохранить результат диагностики и обновить профиль обучения"""
+    raw_rubric_str = json.dumps(raw_rubric_scores or {}, ensure_ascii=False)
+    module_res_str = json.dumps(module_results or {}, ensure_ascii=False)
+    weak_pts_str = json.dumps(weak_points or [], ensure_ascii=False)
+    strengths_str = json.dumps(strengths or [], ensure_ascii=False)
+    recom_str = json.dumps(recommendations or [], ensure_ascii=False)
+    speaking_prof_str = json.dumps(speaking_profile or {}, ensure_ascii=False)
+    writing_prof_str = json.dumps(writing_profile or {}, ensure_ascii=False)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("""
+            INSERT INTO diagnostic_history (
+                user_id, exam_type, exam_version, diagnostic_type, cefr_estimate,
+                readiness_status, overall_diagnostic_score, lesen_score, hoeren_score,
+                schreiben_score, sprechen_score, sprachbausteine_score,
+                raw_rubric_scores, module_results_json, weak_points_json,
+                strengths_json, recommendations_json, speaking_profile_json,
+                writing_profile_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id, exam_type, exam_version, diagnostic_type, cefr_estimate,
+            readiness_status, overall_diagnostic_score, lesen_score, hoeren_score,
+            schreiben_score, sprechen_score, sprachbausteine_score,
+            raw_rubric_str, module_res_str, weak_pts_str,
+            strengths_str, recom_str, speaking_prof_str,
+            writing_prof_str
+        )) as cursor:
+            diag_id = cursor.lastrowid
+
+        # Обновляем профиль обучения
+        await db.execute("""
+            INSERT INTO user_learning_profile (
+                user_id, target_exam, target_level, estimated_cefr, readiness_status,
+                last_diagnostic_id, weaknesses_json, strengths_json, recommendations_json,
+                speaking_profile_json, writing_profile_json, last_reassessment_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                target_exam = excluded.target_exam,
+                target_level = excluded.target_level,
+                estimated_cefr = excluded.estimated_cefr,
+                readiness_status = excluded.readiness_status,
+                last_diagnostic_id = excluded.last_diagnostic_id,
+                weaknesses_json = excluded.weaknesses_json,
+                strengths_json = excluded.strengths_json,
+                recommendations_json = excluded.recommendations_json,
+                speaking_profile_json = excluded.speaking_profile_json,
+                writing_profile_json = excluded.writing_profile_json,
+                last_reassessment_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            user_id, exam_type, cefr_estimate, cefr_estimate, readiness_status,
+            diag_id, weak_pts_str, strengths_str, recom_str,
+            speaking_prof_str, writing_prof_str
+        ))
+
+        # Обновляем подтвержденный уровень в таблице users
+        await db.execute("""
+            UPDATE users SET placement_level = ?, placement_score = ? WHERE user_id = ?
+        """, (cefr_estimate, overall_diagnostic_score, user_id))
+
+        await db.commit()
+        return diag_id
+
+async def get_latest_diagnostic(user_id: int, exam_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Получить самую свежую диагностику пользователя"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        query = "SELECT * FROM diagnostic_history WHERE user_id = ?"
+        params = [user_id]
+        if exam_type:
+            query += " AND exam_type = ?"
+            params.append(exam_type)
+        query += " ORDER BY id DESC LIMIT 1"
+
+        async with db.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            data["raw_rubric_scores"] = json.loads(data["raw_rubric_scores"] or "{}")
+            data["module_results"] = json.loads(data["module_results_json"] or "{}")
+            data["weak_points"] = json.loads(data["weak_points_json"] or "[]")
+            data["strengths"] = json.loads(data["strengths_json"] or "[]")
+            data["recommendations"] = json.loads(data["recommendations_json"] or "[]")
+            data["speaking_profile"] = json.loads(data["speaking_profile_json"] or "{}")
+            data["writing_profile"] = json.loads(data["writing_profile_json"] or "{}")
+            return data
+
+async def get_user_diagnostic_history(user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+    """Получить историю диагностик для отслеживания динамики"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT id, exam_type, exam_version, diagnostic_type, cefr_estimate,
+                   readiness_status, overall_diagnostic_score, lesen_score, hoeren_score,
+                   schreiben_score, sprechen_score, created_at
+            FROM diagnostic_history
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        """, (user_id, limit)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+async def get_or_create_learning_profile(user_id: int) -> Dict[str, Any]:
+    """Получить или создать профиль обучения пользователя"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM user_learning_profile WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                data = dict(row)
+                data["weaknesses"] = json.loads(data["weaknesses_json"] or "[]")
+                data["strengths"] = json.loads(data["strengths_json"] or "[]")
+                data["recommendations"] = json.loads(data["recommendations_json"] or "[]")
+                data["speaking_profile"] = json.loads(data["speaking_profile_json"] or "{}")
+                data["writing_profile"] = json.loads(data["writing_profile_json"] or "{}")
+                return data
+
+        # Создаем профиль по умолчанию
+        await db.execute("""
+            INSERT INTO user_learning_profile (user_id, target_exam, target_level, estimated_cefr, readiness_status)
+            VALUES (?, 'goethe_b1', 'B1', 'A1', 'NOT_READY')
+        """, (user_id,))
+        await db.commit()
+        return {
+            "user_id": user_id,
+            "target_exam": "goethe_b1",
+            "target_level": "B1",
+            "exam_date": "",
+            "estimated_cefr": "A1",
+            "readiness_status": "NOT_READY",
+            "last_diagnostic_id": 0,
+            "weaknesses": [],
+            "strengths": [],
+            "recommendations": [],
+            "speaking_profile": {},
+            "writing_profile": {}
+        }
+
+async def update_learning_profile_goals(user_id: int, target_exam: str, target_level: str, exam_date: str = ""):
+    """Обновить целевой экзамен и дату сдачи"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE user_learning_profile
+            SET target_exam = ?, target_level = ?, exam_date = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+        """, (target_exam, target_level, exam_date, user_id))
+        await db.commit()
+
 
 
 
