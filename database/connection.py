@@ -120,9 +120,13 @@ class TursoConnectionCompat:
         if not self._client:
             self._client = libsql_client.create_client(self._url, auth_token=self._token)
             
-        # Игнорируем PRAGMA команды, которые специфичны для локального файла
+        # Игнорируем только PRAGMA настройки файла (WAL, synchronous, cache_size и т.д.)
+        # Но оставляем интроспекцию (например, PRAGMA table_info(...))
         sql_upper = sql.strip().upper()
-        if sql_upper.startswith("PRAGMA "):
+        if any(sql_upper.startswith(p) for p in [
+            "PRAGMA JOURNAL_MODE", "PRAGMA SYNCHRONOUS", "PRAGMA BUSY_TIMEOUT",
+            "PRAGMA CACHE_SIZE", "PRAGMA TEMP_STORE"
+        ]):
             class DummyResult:
                 rows = []
                 last_insert_rowid = None
@@ -138,8 +142,13 @@ class TursoConnectionCompat:
         else:
             p = [params]
             
-        res = await self._client.execute(sql, p)
-        return TursoCursorCompat(res)
+        try:
+            res = await self._client.execute(sql, p)
+            return TursoCursorCompat(res)
+        except KeyError as e:
+            # Ошибка базы данных через Turso HTTP API (возвращает 'error' вместо 'result')
+            import aiosqlite
+            raise aiosqlite.OperationalError(f"Turso SQL error on query: {sql[:100]}") from e
 
     def execute(self, sql: str, params: Any = None):
         return TursoQueryContext(self._do_execute(sql, params))
