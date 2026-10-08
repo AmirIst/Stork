@@ -1,6 +1,7 @@
 import io
 import logging
 from aiogram import Router, F
+from aiogram.filters import StateFilter
 from aiogram.types import CallbackQuery, Message, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -170,7 +171,7 @@ async def handle_ai_message(message: Message, state: FSMContext):
     )
 
 @router.message(AIConversationState.in_conversation, F.voice)
-@router.message(F.voice)
+@router.message(StateFilter(None), F.voice)
 async def handle_ai_voice(message: Message, state: FSMContext):
     """Обработка голосовых сообщений ученика с анализом речи и голосовым ответом"""
     await state.set_state(AIConversationState.in_conversation)
