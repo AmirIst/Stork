@@ -199,6 +199,35 @@ async def init_db():
         );
         """)
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS promo_codes (
+            code TEXT PRIMARY KEY,
+            promo_type TEXT DEFAULT 'days',
+            days INTEGER DEFAULT 30,
+            discount_val INTEGER DEFAULT 0,
+            max_activations INTEGER,
+            used_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
+            is_active INTEGER DEFAULT 1,
+            description TEXT
+        );
+        """)
+
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS payments_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            plan_id TEXT NOT NULL,
+            plan_title TEXT NOT NULL,
+            stars_amount INTEGER DEFAULT 0,
+            currency TEXT DEFAULT 'XTR',
+            payment_method TEXT DEFAULT 'stars',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_payments_user ON payments_history(user_id);")
+
         # Миграция: проверяем колонки в users
         async with db.execute("PRAGMA table_info(users)") as cursor:
             user_cols = [row[1] for row in await cursor.fetchall()]
@@ -218,6 +247,8 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN trial_used INTEGER DEFAULT 0")
             if "is_lifetime_vip" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN is_lifetime_vip INTEGER DEFAULT 0")
+            if "subscription_type" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN subscription_type TEXT DEFAULT 'none'")
             if "daily_ai_count" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN daily_ai_count INTEGER DEFAULT 0")
             if "daily_exam_count" not in user_cols:
@@ -276,6 +307,18 @@ async def init_db():
 
         await db.commit()
         logger.info(f"Словарь Stork ({len(INITIAL_WORDS)} слов) успешно синхронизирован с базой данных.")
+
+        # Инициализация базовых промокодов, если таблица пуста
+        async with db.execute("SELECT COUNT(*) FROM promo_codes") as cursor:
+            promo_cnt = (await cursor.fetchone())[0]
+            if promo_cnt == 0:
+                for p_code, p_info in PROMO_CODES.items():
+                    await db.execute("""
+                        INSERT OR IGNORE INTO promo_codes (code, promo_type, days, description)
+                        VALUES (?, 'days', ?, ?)
+                    """, (p_code.upper(), int(p_info.get("days", 30)), p_info.get("description", "")))
+                await db.commit()
+                logger.info("Базовые промокоды Stork успешно инициализированы в таблице promo_codes.")
 
 # Быстрый оперативный кэш в памяти (In-Memory Cache) для устранения микрофризов интерфейса
 _USER_LANG_CACHE: Dict[int, str] = {}
@@ -894,16 +937,15 @@ async def activate_promo_code(user_id: int, code: str) -> Tuple[bool, str, int, 
     Проверить и активировать промокод.
     Каждый промокод одноразовый для каждого конкретного пользователя.
     Возвращает: (успех, статус, начислено_дней, дата_окончания).
-    Статусы: 'success', 'already_used', 'invalid_code'.
+    Статусы: 'success', 'already_used', 'invalid_code', 'expired_or_inactive', 'limit_reached', 'discount'.
     """
-    promo_info = get_promo_info(code)
-    if not promo_info:
-        return False, "invalid_code", 0, None
-
     normalized_code = code.strip().upper()
-    days = int(promo_info.get("days", 30))
+    now_dt = datetime.now(timezone.utc)
+    now_str = now_dt.isoformat()
 
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
         # Проверяем, активировал ли этот пользователь данный промокод ранее
         async with db.execute(
             "SELECT 1 FROM user_promo_activations WHERE user_id = ? AND promo_code = ?",
@@ -913,15 +955,332 @@ async def activate_promo_code(user_id: int, code: str) -> Tuple[bool, str, int, 
                 _, until_str = await is_user_premium(user_id)
                 return False, "already_used", 0, until_str
 
-        # Фиксируем активацию
+        # 1. Сначала ищем промокод в базе данных
+        async with db.execute("SELECT * FROM promo_codes WHERE code = ?", (normalized_code,)) as cursor:
+            db_promo = await cursor.fetchone()
+
+        if db_promo:
+            if not db_promo["is_active"]:
+                return False, "expired_or_inactive", 0, None
+            if db_promo["expires_at"] and db_promo["expires_at"] < now_str:
+                return False, "expired_or_inactive", 0, None
+            if db_promo["max_activations"] is not None and db_promo["used_count"] >= db_promo["max_activations"]:
+                return False, "limit_reached", 0, None
+
+            p_type = db_promo["promo_type"]
+            days = db_promo["days"] or 30
+
+            # Фиксируем активацию
+            await db.execute(
+                "INSERT INTO user_promo_activations (user_id, promo_code, days_granted) VALUES (?, ?, ?)",
+                (user_id, normalized_code, days if p_type != "lifetime" else 36500)
+            )
+            await db.execute(
+                "UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?",
+                (normalized_code,)
+            )
+
+            if p_type == "lifetime":
+                await db.execute("UPDATE users SET is_lifetime_vip = 1, is_premium = 1, subscription_type = 'promo_lifetime' WHERE user_id = ?", (user_id,))
+                await db.commit()
+                return True, "success", 0, "lifetime"
+            elif p_type in ("discount_percent", "discount_stars"):
+                await db.commit()
+                return True, "discount", db_promo["discount_val"], None
+            else:
+                await db.execute("UPDATE users SET subscription_type = 'promo' WHERE user_id = ?", (user_id,))
+                await db.commit()
+                until_str = await activate_premium(user_id, days=days)
+                return True, "success", days, until_str
+
+        # 2. Фолбэк на статический словарь в premium_config.py
+        promo_info = get_promo_info(normalized_code)
+        if not promo_info:
+            return False, "invalid_code", 0, None
+
+        days = int(promo_info.get("days", 30))
         await db.execute(
             "INSERT INTO user_promo_activations (user_id, promo_code, days_granted) VALUES (?, ?, ?)",
             (user_id, normalized_code, days)
         )
+        await db.execute("UPDATE users SET subscription_type = 'promo' WHERE user_id = ?", (user_id,))
         await db.commit()
 
     until_str = await activate_premium(user_id, days=days)
     return True, "success", days, until_str
+
+# ==============================================================================
+# АДМИН-ПАНЕЛЬ: УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ, ПОДПИСКАМИ И ПРОМОКОДАМИ
+# ==============================================================================
+
+async def record_payment(
+    user_id: int,
+    plan_id: str,
+    plan_title: str,
+    stars_amount: int,
+    currency: str = "XTR",
+    payment_method: str = "stars"
+) -> int:
+    """Записать транзакцию об оплате в историю платежей"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("""
+            INSERT INTO payments_history (user_id, plan_id, plan_title, stars_amount, currency, payment_method)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, plan_id, plan_title, stars_amount, currency, payment_method)) as cur:
+            row_id = cur.lastrowid
+        await db.commit()
+    return row_id
+
+async def get_admin_stats() -> Dict[str, Any]:
+    """Сбор расширенной статистики для админ-панели (пользователи, подписки, финансы, MRR)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # 1. Всего пользователей
+        async with db.execute("SELECT COUNT(*) FROM users") as cur:
+            total_users = (await cur.fetchone())[0]
+
+        # 2. Активные за 24 часа и за 7 дней
+        now_dt = datetime.now(timezone.utc)
+        today_start = (now_dt - timedelta(days=1)).isoformat()
+        week_start = (now_dt - timedelta(days=7)).isoformat()
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE last_active >= ?", (today_start,)
+        ) as cur:
+            active_today = (await cur.fetchone())[0]
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE last_active >= ?", (week_start,)
+        ) as cur:
+            active_7d = (await cur.fetchone())[0]
+
+        # 3. Новые пользователи за сегодня (за 24ч)
+        async with db.execute(
+            "SELECT COUNT(*) FROM users WHERE last_active >= ?", (today_start,)
+        ) as cur:
+            new_today = active_today
+
+        # 4. Активные Premium
+        now_str = now_dt.isoformat()
+        async with db.execute("""
+            SELECT COUNT(*) FROM users 
+            WHERE is_lifetime_vip = 1 OR (is_premium = 1 AND (premium_until IS NULL OR premium_until > ?))
+        """, (now_str,)) as cur:
+            total_premium = (await cur.fetchone())[0]
+
+        # 5. Разбивка по типам подписки
+        async with db.execute("SELECT COUNT(*) FROM users WHERE is_lifetime_vip = 1") as cur:
+            cnt_lifetime = (await cur.fetchone())[0]
+
+        async with db.execute("""
+            SELECT subscription_type, COUNT(*) as cnt 
+            FROM users 
+            WHERE is_lifetime_vip = 0 AND is_premium = 1 AND (premium_until IS NULL OR premium_until > ?)
+            GROUP BY subscription_type
+        """, (now_str,)) as cur:
+            type_rows = await cur.fetchall()
+            types_map = {r["subscription_type"] or "other": r["cnt"] for r in type_rows}
+
+        cnt_1m = types_map.get("plan_1m", 0)
+        cnt_3m = types_map.get("plan_3m", 0)
+        cnt_1y = types_map.get("plan_1y", 0)
+        cnt_trial = types_map.get("trial", 0)
+        cnt_promo = types_map.get("promo", 0)
+        cnt_manual = types_map.get("manual", 0)
+        cnt_other = sum(v for k, v in types_map.items() if k not in ("plan_1m", "plan_3m", "plan_1y", "trial", "promo", "manual"))
+
+        # 6. Оплаты и доход
+        async with db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(stars_amount), 0) FROM payments_history"
+        ) as cur:
+            p_row = await cur.fetchone()
+            total_payments_count = p_row[0]
+            total_revenue_stars = p_row[1]
+
+        # 7. Ожидаемый MRR (Monthly Recurring Revenue)
+        mrr_stars = int(cnt_1m * 250 + cnt_3m * (650 / 3) + cnt_1y * (1990 / 12))
+        mrr_eur = round(mrr_stars * 0.02, 2)
+        total_revenue_eur = round(total_revenue_stars * 0.02, 2)
+
+        return {
+            "total_users": total_users,
+            "active_today": active_today,
+            "active_7d": active_7d,
+            "new_today": new_today,
+            "total_premium": total_premium,
+            "cnt_lifetime": cnt_lifetime,
+            "cnt_1m": cnt_1m,
+            "cnt_3m": cnt_3m,
+            "cnt_1y": cnt_1y,
+            "cnt_trial": cnt_trial,
+            "cnt_promo": cnt_promo,
+            "cnt_manual": cnt_manual,
+            "cnt_other": cnt_other,
+            "total_payments_count": total_payments_count,
+            "total_revenue_stars": total_revenue_stars,
+            "total_revenue_eur": total_revenue_eur,
+            "mrr_stars": mrr_stars,
+            "mrr_eur": mrr_eur,
+        }
+
+async def get_user_admin_info(target: Any) -> Optional[Dict[str, Any]]:
+    """Найти пользователя по ID или username со всеми деталями для админа"""
+    target_str = str(target).strip()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if target_str.isdigit() or isinstance(target, int):
+            uid = int(target)
+            async with db.execute("SELECT * FROM users WHERE user_id = ?", (uid,)) as cur:
+                user_row = await cur.fetchone()
+        else:
+            clean_name = target_str.lstrip("@")
+            async with db.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (clean_name,)) as cur:
+                user_row = await cur.fetchone()
+
+        if not user_row:
+            return None
+
+        u = dict(user_row)
+        user_id = u["user_id"]
+
+        async with db.execute("SELECT COUNT(*) FROM user_progress WHERE user_id = ? AND status = 'learned'", (user_id,)) as cur:
+            u["words_learned"] = (await cur.fetchone())[0]
+
+        async with db.execute("SELECT COUNT(*) FROM user_progress WHERE user_id = ?", (user_id,)) as cur:
+            u["words_total"] = (await cur.fetchone())[0]
+
+        async with db.execute("SELECT COUNT(*) FROM referrals WHERE inviter_id = ?", (user_id,)) as cur:
+            u["referrals_count"] = (await cur.fetchone())[0]
+
+        async with db.execute("SELECT COUNT(*), COALESCE(SUM(stars_amount), 0) FROM payments_history WHERE user_id = ?", (user_id,)) as cur:
+            p_row = await cur.fetchone()
+            u["payments_count"] = p_row[0]
+            u["payments_sum"] = p_row[1]
+
+        return u
+
+async def grant_user_premium(
+    target: Any,
+    days: int = 30,
+    sub_type: str = "manual"
+) -> Tuple[bool, str, Optional[Dict[str, Any]], str]:
+    """
+    Выдать пользователю Premium вручную через админку.
+    Возвращает (успех, статус, пользователь, дата_окончания).
+    """
+    user_info = await get_user_admin_info(target)
+    if not user_info:
+        return False, "user_not_found", None, ""
+
+    uid = user_info["user_id"]
+    if days >= 36500 or sub_type == "lifetime":
+        await set_user_lifetime_vip(uid, True)
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE users SET subscription_type = 'lifetime' WHERE user_id = ?", (uid,))
+            await db.commit()
+        return True, "lifetime", user_info, "lifetime"
+    else:
+        until_str = await activate_premium(uid, days=days)
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("UPDATE users SET subscription_type = ? WHERE user_id = ?", (sub_type, uid))
+            await db.commit()
+        return True, "success", user_info, until_str
+
+async def revoke_user_premium(target: Any) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Отозвать Premium-статус у пользователя"""
+    user_info = await get_user_admin_info(target)
+    if not user_info:
+        return False, "user_not_found", None
+
+    uid = user_info["user_id"]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users 
+            SET is_premium = 0,
+                premium_until = NULL,
+                is_lifetime_vip = 0,
+                subscription_type = 'none'
+            WHERE user_id = ?
+        """, (uid,))
+        await db.commit()
+    return True, "revoked", user_info
+
+async def create_db_promo_code(
+    code: str,
+    promo_type: str = "days",
+    days: int = 30,
+    discount_val: int = 0,
+    max_activations: Optional[int] = None,
+    expires_days: Optional[int] = None,
+    description: str = ""
+) -> Tuple[bool, str]:
+    """Создать новый промокод в базе данных"""
+    norm_code = code.strip().upper()
+    expires_at = None
+    if expires_days:
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_days)).isoformat()
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT 1 FROM promo_codes WHERE code = ?", (norm_code,)) as cur:
+            if await cur.fetchone():
+                return False, "already_exists"
+
+        await db.execute("""
+            INSERT INTO promo_codes (code, promo_type, days, discount_val, max_activations, expires_at, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (norm_code, promo_type, days, discount_val, max_activations, expires_at, description))
+        await db.commit()
+
+    return True, norm_code
+
+async def get_all_db_promo_codes() -> List[Dict[str, Any]]:
+    """Получить список всех промокодов из базы данных"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM promo_codes ORDER BY created_at DESC") as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+async def deactivate_db_promo_code(code: str) -> bool:
+    """Деактивировать промокод"""
+    norm_code = code.strip().upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE promo_codes SET is_active = 0 WHERE code = ?", (norm_code,))
+        await db.commit()
+    return True
+
+async def delete_db_promo_code(code: str) -> bool:
+    """Удалить промокод из базы данных"""
+    norm_code = code.strip().upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM promo_codes WHERE code = ?", (norm_code,))
+        await db.commit()
+    return True
+
+async def get_broadcast_user_ids(audience: str = "all") -> List[int]:
+    """Получить список ID пользователей для рассылки (all, premium, free)"""
+    now_str = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        if audience == "premium":
+            query = """
+                SELECT user_id FROM users 
+                WHERE is_lifetime_vip = 1 OR (is_premium = 1 AND (premium_until IS NULL OR premium_until > ?))
+            """
+            params = (now_str,)
+        elif audience == "free":
+            query = """
+                SELECT user_id FROM users 
+                WHERE is_lifetime_vip = 0 AND (is_premium = 0 OR (premium_until IS NOT NULL AND premium_until <= ?))
+            """
+            params = (now_str,)
+        else:
+            query = "SELECT user_id FROM users"
+            params = ()
+
+        async with db.execute(query, params) as cur:
+            rows = await cur.fetchall()
+            return [r[0] for r in rows]
+
 
 async def register_referral(inviter_id: int, referred_id: int) -> Optional[Dict[str, Any]]:
     """

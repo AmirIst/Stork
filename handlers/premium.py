@@ -1,10 +1,14 @@
 import logging
+from datetime import datetime, timezone
+import aiosqlite
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, LabeledPrice, PreCheckoutQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
+from config import ADMIN_IDS
 from database import db
+from database.db import DB_PATH
 from locales.manager import i18n
 from keyboards.inline import (
     get_premium_keyboard,
@@ -155,6 +159,9 @@ async def cb_buy_plan(callback: CallbackQuery):
     except Exception as e:
         if plan.get("is_lifetime") or plan_id == "plan_lifetime":
             await db.set_user_lifetime_vip(user_id, is_vip=True)
+            async with aiosqlite.connect(DB_PATH) as database:
+                await database.execute("UPDATE users SET subscription_type = 'lifetime' WHERE user_id = ?", (user_id,))
+                await database.commit()
             until_date = "lifetime"
             fallback_msg = (
                 f"🎉 *Тестовый режим:* Тариф *{plan_title}* успешно активирован бессрочно!"
@@ -163,6 +170,10 @@ async def cb_buy_plan(callback: CallbackQuery):
             )
         else:
             until_date = await db.activate_premium(user_id, days=days)
+            sub_type = "1m" if days == 30 else ("3m" if days == 90 else ("1y" if days >= 365 else "other"))
+            async with aiosqlite.connect(DB_PATH) as database:
+                await database.execute("UPDATE users SET subscription_type = ? WHERE user_id = ?", (sub_type, user_id))
+                await database.commit()
             fallback_msg = (
                 f"🎉 *Тестовый режим:* Подписка *Stork Premium ⭐️ ({plan_title})* активирована на *{days} дн.* до *{until_date[:10]}*!"
                 if lang == "ru"
@@ -271,20 +282,50 @@ async def process_successful_payment(message: Message):
     days = 30
     plan_title = "1 месяц" if lang == "ru" else "1 month"
     is_lifetime = False
+    actual_plan_id = "plan_30d"
+    sub_type = "1m"
+
     if payload.startswith("premium_"):
-        parts = payload.split("_")
-        if len(parts) >= 3:
-            plan_id = f"{parts[1]}_{parts[2]}"
-            plan = get_plan_by_id(plan_id)
-            if plan:
-                days = plan["days"]
-                plan_title = plan["title_ru"] if lang == "ru" else plan["title_en"]
-                if plan.get("is_lifetime") or plan_id == "plan_lifetime":
-                    is_lifetime = True
+        raw_part = payload[len("premium_"):]
+        extracted_plan_id = raw_part.rsplit("_", 1)[0]
+        plan = get_plan_by_id(extracted_plan_id)
+        if plan:
+            actual_plan_id = extracted_plan_id
+            days = plan["days"]
+            plan_title = plan["title_ru"] if lang == "ru" else plan["title_en"]
+            if plan.get("is_lifetime") or actual_plan_id == "plan_lifetime":
+                is_lifetime = True
+                sub_type = "lifetime"
+            elif days == 30:
+                sub_type = "1m"
+            elif days == 90:
+                sub_type = "3m"
+            elif days >= 365:
+                sub_type = "1y"
+            else:
+                sub_type = "other"
 
     stars_amount = message.successful_payment.total_amount
+
+    # 1. Запись платежа в историю
+    try:
+        await db.record_payment(
+            user_id=user_id,
+            plan_id=actual_plan_id,
+            plan_title=plan_title,
+            stars_amount=stars_amount,
+            currency="XTR",
+            payment_method="telegram_stars"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка сохранения платежа: {e}")
+
+    # 2. Обновление статуса в таблице users
     if is_lifetime:
         await db.set_user_lifetime_vip(user_id, is_vip=True)
+        async with aiosqlite.connect(DB_PATH) as database:
+            await database.execute("UPDATE users SET subscription_type = 'lifetime' WHERE user_id = ?", (user_id,))
+            await database.commit()
         text = (
             f"🎉 *Оплата {stars_amount} Stars прошла успешно!*\n\n"
             f"Твой статус *{plan_title}* активирован бессрочно! Полный безлимитный доступ ко всем функциям навсегда. "
@@ -296,6 +337,9 @@ async def process_successful_payment(message: Message):
         )
     else:
         until_date = await db.activate_premium(user_id, days=days)
+        async with aiosqlite.connect(DB_PATH) as database:
+            await database.execute("UPDATE users SET subscription_type = ? WHERE user_id = ?", (sub_type, user_id))
+            await database.commit()
         text = (
             f"🎉 *Оплата {stars_amount} Stars прошла успешно!*\n\n"
             f"Твой тариф *Stork Premium ⭐️ ({plan_title})* активен на *{days} дн.* до *{until_date[:10]}*. "
@@ -305,4 +349,22 @@ async def process_successful_payment(message: Message):
             f"Your *Stork Premium ⭐️ ({plan_title})* plan is active for *{days} days* until *{until_date[:10]}*. "
             f"Thank you for supporting Stork!"
         )
+
+    # 3. Мгновенное оповещение администраторов
+    username_str = f"@{message.from_user.username}" if message.from_user.username else (message.from_user.full_name or "Без имени")
+    eur_approx = round(stars_amount * 0.02, 2)
+    admin_alert = (
+        f"🔔 *Новая оплата в Stork Bot!*\n\n"
+        f"👤 Пользователь: {username_str}\n"
+        f"🆔 User ID: `{user_id}`\n"
+        f"📦 Тариф: *{plan_title}*\n"
+        f"⭐️ Сумма: *{stars_amount} Stars* (~{eur_approx} €)\n"
+        f"📅 Время: {datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')}"
+    )
+    for admin_id in ADMIN_IDS:
+        try:
+            await message.bot.send_message(admin_id, admin_alert, parse_mode="Markdown")
+        except Exception as e:
+            logger.warning(f"Не удалось отправить уведомление админу {admin_id}: {e}")
+
     await message.answer(text, reply_markup=get_back_to_menu_keyboard(lang), parse_mode="Markdown")

@@ -1554,6 +1554,136 @@ async def test_telc_diagnostic_persistence():
     assert latest["raw_rubric_scores"]["telc_grade"] == "3 (Befriedigend)"
 
 
+@pytest.mark.anyio
+async def test_admin_stats_and_management():
+    """Тест функций аналитики, управления пользователями, промокодов и оплат для админки"""
+    from database import db
+    from config import is_admin, ADMIN_IDS
+    import aiosqlite
+
+    # 1. Проверка прав администратора
+    assert is_admin(6725392176) is True
+    assert is_admin(190417869) is True
+    assert is_admin(111222333) is False
+
+    # 2. Создание тестового пользователя
+    test_uid = 888777666
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM payments_history WHERE user_id = ?", (test_uid,))
+        await conn.execute("DELETE FROM promo_codes WHERE code LIKE 'TEST%'", ())
+        await conn.commit()
+
+    await db.get_or_create_user(test_uid, "admintestuser", "AdminTester")
+
+    # 3. Поиск пользователя по ID и по @username
+    u_by_id = await db.get_user_admin_info(test_uid)
+    assert u_by_id is not None
+    assert u_by_id["user_id"] == test_uid
+    assert u_by_id["username"] == "admintestuser"
+
+    u_by_name = await db.get_user_admin_info("@admintestuser")
+    assert u_by_name is not None
+    assert u_by_name["user_id"] == test_uid
+
+    # 4. Выдача и отзыв Premium
+    success, st, u_inf, until = await db.grant_user_premium(test_uid, days=30, sub_type="1m")
+    assert success is True
+    assert st == "success"
+    assert until != ""
+
+    u_check = await db.get_user_admin_info(test_uid)
+    assert u_check["is_premium"] == 1
+    assert u_check["subscription_type"] == "1m"
+
+    # Выдача Lifetime
+    success, st, u_inf, until = await db.grant_user_premium(test_uid, sub_type="lifetime")
+    assert success is True
+    assert st == "lifetime"
+
+    u_check = await db.get_user_admin_info(test_uid)
+    assert u_check["is_lifetime_vip"] == 1
+    assert u_check["subscription_type"] == "lifetime"
+
+    # Отзыв Premium
+    success, st, u_inf = await db.revoke_user_premium(test_uid)
+    assert success is True
+    u_check = await db.get_user_admin_info(test_uid)
+    assert u_check["is_premium"] == 0
+    assert u_check["is_lifetime_vip"] == 0
+    assert u_check["subscription_type"] == "none"
+
+    # 5. Динамические промокоды в БД
+    code = "TESTCODE50"
+    succ, created_code = await db.create_db_promo_code(
+        code=code,
+        promo_type="days",
+        days=15,
+        max_activations=2,
+        expires_days=30,
+        description="Тестовый промокод"
+    )
+    assert succ is True
+    assert created_code == code
+
+    all_promos = await db.get_all_db_promo_codes()
+    codes_list = [p["code"] for p in all_promos]
+    assert code in codes_list
+
+    # Активация промокода пользователем
+    ok, act_status, days, exp = await db.activate_promo_code(test_uid, code)
+    assert ok is True
+    assert days == 15
+
+    # Повторная активация тем же пользователем (должна быть отклонена)
+    ok2, act_status2, _, _ = await db.activate_promo_code(test_uid, code)
+    assert ok2 is False
+    assert act_status2 == "already_used"
+
+    # Деактивация промокода
+    await db.deactivate_db_promo_code(code)
+    # Попытка активации другим пользователем после деактивации
+    test_uid2 = 888777667
+    await db.get_or_create_user(test_uid2, "otheruser", "Other")
+    ok3, act_status3, _, _ = await db.activate_promo_code(test_uid2, code)
+    assert ok3 is False
+
+    # Удаление промокода
+    await db.delete_db_promo_code(code)
+
+    # 6. Запись платежа и подсчет MRR/выручки
+    await db.record_payment(
+        user_id=test_uid,
+        plan_id="plan_30d",
+        plan_title="1 месяц",
+        stars_amount=250,
+        currency="XTR",
+        payment_method="telegram_stars"
+    )
+
+    u_after_pay = await db.get_user_admin_info(test_uid)
+    assert u_after_pay["payments_count"] == 1
+    assert u_after_pay["payments_sum"] == 250
+
+    # Проверка общей аналитики
+    stats = await db.get_admin_stats()
+    assert stats["total_users"] >= 1
+    assert stats["total_payments_count"] >= 1
+    assert stats["total_revenue_stars"] >= 250
+    assert "mrr_stars" in stats
+    assert "mrr_eur" in stats
+
+    # 7. Выборка аудитории для рассылки
+    all_users = await db.get_broadcast_user_ids("all")
+    assert test_uid in all_users
+
+    # Чистка
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id IN (?, ?)", (test_uid, test_uid2))
+        await conn.execute("DELETE FROM payments_history WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+
 
 
 
