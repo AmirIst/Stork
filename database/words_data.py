@@ -1,14 +1,20 @@
 """
 Словарь немецких слов с артиклями, переводом и примерами.
-Загружает 500 качественных слов из data/words_500.json по категориям и уровням (A1, A2, B1).
+Загружает 3 000 проверенных слов из data/words_3000.json по 12 категориям и уровням (A1, A2, B1).
 """
 import json
 from pathlib import Path
 
+DATA_FILE_3000 = Path(__file__).resolve().parent.parent / "data" / "words_3000.json"
 DATA_FILE_1000 = Path(__file__).resolve().parent.parent / "data" / "words_1000.json"
 DATA_FILE_500 = Path(__file__).resolve().parent.parent / "data" / "words_500.json"
 
-target_file = DATA_FILE_1000 if DATA_FILE_1000.exists() else DATA_FILE_500
+if DATA_FILE_3000.exists():
+    target_file = DATA_FILE_3000
+elif DATA_FILE_1000.exists():
+    target_file = DATA_FILE_1000
+else:
+    target_file = DATA_FILE_500
 
 if target_file.exists():
     try:

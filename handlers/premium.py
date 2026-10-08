@@ -136,9 +136,9 @@ async def cb_buy_plan(callback: CallbackQuery):
 
     title = f"⭐️ Stork Premium ({plan_title})"
     description = (
-        "Безлимитный ИИ-собеседник, проверка экзаменационных писем Goethe & Telc, приоритетный отклик."
+        "Безлимитный немецкий 24/7: симуляторы Goethe & telc B1, 3 000 слов, живое общение голосом и проверка писем."
         if lang == "ru"
-        else "Unlimited AI conversation, Goethe & Telc exam review, priority response speed."
+        else "Unlimited German 24/7: Goethe & telc B1 simulators, 3,000 words, live voice practice & writing review."
     )
 
     try:
