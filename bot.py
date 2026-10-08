@@ -68,10 +68,19 @@ async def main():
 
     logger.info("Бот Stork (Аист) успешно запущен и готов к работе!")
     
-    # Удаляем вебхуки и запускаем polling
+    # Удаляем вебхуки и запускаем polling с автоматическим переподключением
     await bot.delete_webhook(drop_pending_updates=True)
     try:
-        await dp.start_polling(bot)
+        while True:
+            try:
+                await dp.start_polling(bot)
+                break
+            except (KeyboardInterrupt, SystemExit):
+                logger.info("Получен сигнал остановки бота.")
+                break
+            except Exception as e:
+                logger.error(f"Временный сбой соединения Telegram: {e}. Автоматическое переподключение через 3 секунды...")
+                await asyncio.sleep(3)
     finally:
         reminder_task.cancel()
         await bot.session.close()

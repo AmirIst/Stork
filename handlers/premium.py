@@ -153,13 +153,21 @@ async def cb_buy_plan(callback: CallbackQuery):
         )
         await callback.answer()
     except Exception as e:
-        logger.warning(f"Telegram Stars invoice warning: {e}. Тестовая моментальная активация.")
-        until_date = await db.activate_premium(user_id, days=days)
-        fallback_msg = (
-            f"🎉 *Тестовый режим:* Подписка *Stork Premium ⭐️ ({plan_title})* активирована на *{days} дн.* до *{until_date[:10]}*!"
-            if lang == "ru"
-            else f"🎉 *Demo mode:* Subscription *Stork Premium ⭐️ ({plan_title})* activated for *{days} days* until *{until_date[:10]}*!"
-        )
+        if plan.get("is_lifetime") or plan_id == "plan_lifetime":
+            await db.set_user_lifetime_vip(user_id, is_vip=True)
+            until_date = "lifetime"
+            fallback_msg = (
+                f"🎉 *Тестовый режим:* Тариф *{plan_title}* успешно активирован бессрочно!"
+                if lang == "ru"
+                else f"🎉 *Demo mode:* Plan *{plan_title}* successfully activated forever!"
+            )
+        else:
+            until_date = await db.activate_premium(user_id, days=days)
+            fallback_msg = (
+                f"🎉 *Тестовый режим:* Подписка *Stork Premium ⭐️ ({plan_title})* активирована на *{days} дн.* до *{until_date[:10]}*!"
+                if lang == "ru"
+                else f"🎉 *Demo mode:* Subscription *Stork Premium ⭐️ ({plan_title})* activated for *{days} days* until *{until_date[:10]}*!"
+            )
         await show_or_update_window(
             callback,
             fallback_msg,
@@ -262,6 +270,7 @@ async def process_successful_payment(message: Message):
 
     days = 30
     plan_title = "1 месяц" if lang == "ru" else "1 month"
+    is_lifetime = False
     if payload.startswith("premium_"):
         parts = payload.split("_")
         if len(parts) >= 3:
@@ -270,17 +279,30 @@ async def process_successful_payment(message: Message):
             if plan:
                 days = plan["days"]
                 plan_title = plan["title_ru"] if lang == "ru" else plan["title_en"]
+                if plan.get("is_lifetime") or plan_id == "plan_lifetime":
+                    is_lifetime = True
 
-    until_date = await db.activate_premium(user_id, days=days)
     stars_amount = message.successful_payment.total_amount
-
-    text = (
-        f"🎉 *Оплата {stars_amount} Stars прошла успешно!*\n\n"
-        f"Твой тариф *Stork Premium ⭐️ ({plan_title})* активен на *{days} дн.* до *{until_date[:10]}*. "
-        f"Спасибо за поддержку проекта!"
-        if lang == "ru"
-        else f"🎉 *Payment of {stars_amount} Stars confirmed!*\n\n"
-        f"Your *Stork Premium ⭐️ ({plan_title})* plan is active for *{days} days* until *{until_date[:10]}*. "
-        f"Thank you for supporting Stork!"
-    )
+    if is_lifetime:
+        await db.set_user_lifetime_vip(user_id, is_vip=True)
+        text = (
+            f"🎉 *Оплата {stars_amount} Stars прошла успешно!*\n\n"
+            f"Твой статус *{plan_title}* активирован бессрочно! Полный безлимитный доступ ко всем функциям навсегда. "
+            f"Спасибо за поддержку проекта!"
+            if lang == "ru"
+            else f"🎉 *Payment of {stars_amount} Stars confirmed!*\n\n"
+            f"Your *{plan_title}* plan is active forever! Full unlimited access to all features. "
+            f"Thank you for supporting Stork!"
+        )
+    else:
+        until_date = await db.activate_premium(user_id, days=days)
+        text = (
+            f"🎉 *Оплата {stars_amount} Stars прошла успешно!*\n\n"
+            f"Твой тариф *Stork Premium ⭐️ ({plan_title})* активен на *{days} дн.* до *{until_date[:10]}*. "
+            f"Спасибо за поддержку проекта!"
+            if lang == "ru"
+            else f"🎉 *Payment of {stars_amount} Stars confirmed!*\n\n"
+            f"Your *Stork Premium ⭐️ ({plan_title})* plan is active for *{days} days* until *{until_date[:10]}*. "
+            f"Thank you for supporting Stork!"
+        )
     await message.answer(text, reply_markup=get_back_to_menu_keyboard(lang), parse_mode="Markdown")

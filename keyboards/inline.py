@@ -305,27 +305,24 @@ def get_premium_plans_keyboard(lang: str = "ru", has_discount: bool = False) -> 
     for plan in PREMIUM_PLANS:
         price = get_plan_price(plan, has_discount=has_discount)
         title = plan["title_ru"] if lang == "ru" else plan["title_en"]
+        eur = plan.get("price_eur", "")
+        eur_str = f" (~{eur})" if eur else ""
         if has_discount and plan.get("is_monthly"):
-            text = f"⭐️ {title}: {price} Stars (-50% 🔥)"
+            text = f"⭐️ {title}: {price} Stars (-50% 🔥){eur_str}"
         else:
-            text = f"⭐️ {title}: {price} Stars"
+            text = f"⭐️ {title}: {price} Stars{eur_str}"
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"buy_plan:{plan['id']}")])
 
     # Дополнительные способы оплаты картой (EUR / СБП через Tribute)
     if TRIBUTE_CONFIG.get("enabled", False):
-        tribute_10d = get_tribute_url("plan_10d")
-        tribute_30d = get_tribute_url("plan_30d", has_discount=has_discount)
-
-        if tribute_10d and isinstance(tribute_10d, str) and tribute_10d.startswith("http"):
-            text_10d = "💳 10 дней картой (EUR / СБП)" if lang == "ru" else "💳 10 days by card (EUR)"
-            buttons.append([InlineKeyboardButton(text=text_10d, url=tribute_10d)])
-
-        if tribute_30d and isinstance(tribute_30d, str) and tribute_30d.startswith("http"):
-            if has_discount:
-                text_30d = "💳 1 месяц картой (-50% 🔥)" if lang == "ru" else "💳 1 month by card (-50% 🔥)"
-            else:
-                text_30d = "💳 1 месяц картой (EUR / СБП)" if lang == "ru" else "💳 1 month by card (EUR)"
-            buttons.append([InlineKeyboardButton(text=text_30d, url=tribute_30d)])
+        for plan in PREMIUM_PLANS:
+            plan_id = plan["id"]
+            url = get_tribute_url(plan_id, has_discount=has_discount)
+            if url and isinstance(url, str) and url.startswith("http"):
+                eur = plan.get("price_eur", "")
+                title = plan["title_ru"] if lang == "ru" else plan["title_en"]
+                text_card = f"💳 {title} картой ({eur})" if lang == "ru" else f"💳 {title} by card ({eur})"
+                buttons.append([InlineKeyboardButton(text=text_card, url=url)])
 
     buttons.append([
         InlineKeyboardButton(text="⬅️ Назад в Премиум" if lang == "ru" else "⬅️ Back to Premium", callback_data="menu_premium"),

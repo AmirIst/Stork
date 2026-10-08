@@ -20,7 +20,7 @@ from typing import Dict, Any, List, Optional
 # ------------------------------------------------------------------------------
 # Количество дней премиума, которое выдается каждому пользователю
 # бесплатно один раз в жизни по кнопке пробного периода.
-FREE_TRIAL_DAYS: int = 7
+FREE_TRIAL_DAYS: int = 3
 
 
 # ------------------------------------------------------------------------------
@@ -57,42 +57,69 @@ PROMO_CODES: Dict[str, Dict[str, Any]] = {
 
 
 # ------------------------------------------------------------------------------
-# 3. ТАРИФЫ ОПЛАТЫ (TELEGRAM STARS ⭐️)
+# 3. ТАРИФЫ ОПЛАТЫ (TELEGRAM STARS ⭐️ И EUR)
 # ------------------------------------------------------------------------------
 # Список тарифов подписки, которые видит пользователь в меню оплаты.
-# Ты можешь в любой момент изменить количество Stars или количество дней.
 #
 # Поля:
-# - id: уникальный идентификатор тарифа (например, plan_1d, plan_10d, plan_30d)
+# - id: уникальный идентификатор тарифа (plan_7d, plan_30d, plan_90d, plan_365d, plan_lifetime)
 # - days: количество дней премиума
 # - stars: стоимость в Telegram Stars (целое число)
+# - price_eur: ориентировочная стоимость в евро
 # - title_ru: название тарифа на русском
 # - title_en: название тарифа на английском
-# - is_monthly: True, если это месячный план (к нему применяется скидка за рефералов)
+# - is_monthly: True, если это месячный план
+# - is_lifetime: True, если это пожизненный VIP-доступ
 PREMIUM_PLANS: List[Dict[str, Any]] = [
     {
-        "id": "plan_1d",
-        "days": 1,
-        "stars": 15,
-        "title_ru": "1 день",
-        "title_en": "1 day",
+        "id": "plan_7d",
+        "days": 7,
+        "stars": 125,
+        "price_eur": "2.50€",
+        "title_ru": "7 дней (Спринт)",
+        "title_en": "7 days (Sprint)",
         "is_monthly": False,
-    },
-    {
-        "id": "plan_10d",
-        "days": 10,
-        "stars": 75,
-        "title_ru": "10 дней",
-        "title_en": "10 days",
-        "is_monthly": False,
+        "is_lifetime": False,
     },
     {
         "id": "plan_30d",
         "days": 30,
-        "stars": 150,
-        "title_ru": "1 месяц (30 дней)",
-        "title_en": "1 month (30 days)",
+        "stars": 250,
+        "price_eur": "5.00€",
+        "title_ru": "1 месяц (Стандарт)",
+        "title_en": "1 month (Standard)",
         "is_monthly": True,
+        "is_lifetime": False,
+    },
+    {
+        "id": "plan_90d",
+        "days": 90,
+        "stars": 600,
+        "price_eur": "12.00€",
+        "title_ru": "3 месяца (Интенсив)",
+        "title_en": "3 months (Intensive)",
+        "is_monthly": False,
+        "is_lifetime": False,
+    },
+    {
+        "id": "plan_365d",
+        "days": 365,
+        "stars": 1500,
+        "price_eur": "30.00€",
+        "title_ru": "1 год (Курс)",
+        "title_en": "1 year (Full Course)",
+        "is_monthly": False,
+        "is_lifetime": False,
+    },
+    {
+        "id": "plan_lifetime",
+        "days": 36500,
+        "stars": 2500,
+        "price_eur": "50.00€",
+        "title_ru": "👑 Вечный VIP (Навсегда)",
+        "title_en": "👑 Lifetime VIP (Forever)",
+        "is_monthly": False,
+        "is_lifetime": True,
     },
 ]
 
@@ -104,14 +131,14 @@ PREMIUM_PLANS: List[Dict[str, Any]] = [
 #
 # - days_per_invite: сколько дней премиума дается за каждого приглашенного друга (1 день)
 # - milestone_invites: цель/порог для супер-бонуса (10 человек)
-# - milestone_bonus_days: дополнительный бонус в днях при достижении цели (5 дней).
-#   В сумме пользователь получает 10 дней (по 1 за каждого) + 5 бонусных = 15 дней за 10 человек!
-# - milestone_discount_percent: постоянная скидка на месячный тариф при 10+ приглашенных (50%)
+# - milestone_bonus_days: дополнительный бонус в днях при достижении цели (14 дней).
+#   В сумме пользователь получает 10 дней (по 1 за каждого) + 14 бонусных = 24 дня премиума за 10 человек!
+# - milestone_discount_percent: процент скидки (0 = отключена пожизненная скидка)
 REFERRAL_CONFIG: Dict[str, Any] = {
     "days_per_invite": 1,
     "milestone_invites": 10,
-    "milestone_bonus_days": 5,          # 10 + 5 = 15 дней суммарно за 10 рефералов
-    "milestone_discount_percent": 50,   # 50% скидка на месячный тариф
+    "milestone_bonus_days": 14,         # 10 + 14 = 24 дня суммарно за 10 рефералов
+    "milestone_discount_percent": 0,    # Без пожизненных скидок
 }
 
 
@@ -119,10 +146,6 @@ REFERRAL_CONFIG: Dict[str, Any] = {
 # 5. ПОЖИЗНЕННЫЙ VIP (LIFETIME PREMIUM)
 # ------------------------------------------------------------------------------
 # Список Telegram ID или юзернеймов пользователей с вечным VIP-доступом.
-# Добавь свой ID или ID друзей сюда: у них будет пожизненный премиум без ограничений.
-# Если захочешь забрать VIP обратно: просто удали ID или юзернейм из этого списка!
-#
-# Можно указывать как числовой ID, так и юзернейм (с @ или без).
 LIFETIME_VIP_USERS: List[Any] = [
     6725392176,        # Твой основной Telegram ID (Amir)
     "@Amirist1",       # Твой юзернейм
@@ -133,17 +156,13 @@ LIFETIME_VIP_USERS: List[Any] = [
 # 6. ОПЛАТА КАРТОЙ ЧЕРЕЗ TRIBUTE (EUR / RUB / СБП)
 # ------------------------------------------------------------------------------
 # Здесь указываются прямые ссылки на оплату товаров в Tribute (https://tribute.tg).
-# Покупатель может платить картой Visa/Mastercard (в EUR/USD/RUB), через Apple Pay или СБП.
-# После создания товара в Tribute просто вставь полученную ссылку сюда:
-# Пример ссылки: "https://t.me/tribute/app?startapp=p123"
 TRIBUTE_CONFIG: Dict[str, Any] = {
     "enabled": True,
-    # Ссылка на товар "Stork Premium (10 дней)"
-    "plan_10d_url": None,
-    # Ссылка на товар "Stork Premium (1 месяц)"
+    "plan_7d_url": None,
     "plan_30d_url": None,
-    # Ссылка на товар "Stork Premium (1 месяц со скидкой 50%)" для рефералов
-    "plan_30d_discount_url": None,
+    "plan_90d_url": None,
+    "plan_365d_url": None,
+    "plan_lifetime_url": None,
 }
 
 
@@ -202,11 +221,6 @@ def get_tribute_url(plan_id: str, has_discount: bool = False) -> Optional[str]:
     """Получить ссылку на оплату через Tribute для выбранного тарифа"""
     if not TRIBUTE_CONFIG.get("enabled", False):
         return None
-    if plan_id == "plan_10d":
-        return TRIBUTE_CONFIG.get("plan_10d_url")
-    if plan_id == "plan_30d":
-        if has_discount and TRIBUTE_CONFIG.get("plan_30d_discount_url"):
-            return TRIBUTE_CONFIG.get("plan_30d_discount_url")
-        return TRIBUTE_CONFIG.get("plan_30d_url")
-    return None
+    key = f"{plan_id}_url"
+    return TRIBUTE_CONFIG.get(key)
 

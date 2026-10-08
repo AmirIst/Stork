@@ -19,8 +19,10 @@ from premium_config import (
 
 logger = logging.getLogger(__name__)
 
-FREE_DAILY_AI_LIMIT = 10
-FREE_DAILY_EXAM_LIMIT = 3
+FREE_DAILY_AI_LIMIT = 5
+FREE_DAILY_EXAM_LIMIT = 1
+FREE_TOTAL_EXAM_LIMIT = 3
+FREE_DAILY_WORDS_LIMIT = 20
 
 async def init_db():
     """Инициализация базы данных SQLite, миграции и синхронизация словаря"""
@@ -49,6 +51,8 @@ async def init_db():
             premium_until TIMESTAMP,
             daily_ai_count INTEGER DEFAULT 0,
             daily_exam_count INTEGER DEFAULT 0,
+            total_exam_count INTEGER DEFAULT 0,
+            daily_words_count INTEGER DEFAULT 0,
             last_usage_date TEXT DEFAULT '',
             notifications_enabled INTEGER DEFAULT 1,
             last_streak_date TEXT DEFAULT '',
@@ -168,6 +172,10 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN daily_ai_count INTEGER DEFAULT 0")
             if "daily_exam_count" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN daily_exam_count INTEGER DEFAULT 0")
+            if "total_exam_count" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN total_exam_count INTEGER DEFAULT 0")
+            if "daily_words_count" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN daily_words_count INTEGER DEFAULT 0")
             if "last_usage_date" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN last_usage_date TEXT DEFAULT ''")
             if "notifications_enabled" not in user_cols:
@@ -445,6 +453,10 @@ async def get_user_stats(user_id: int) -> Dict[str, Any]:
             "daily_ai_limit": -1 if is_prem else FREE_DAILY_AI_LIMIT,
             "daily_exam_count": user["daily_exam_count"] if user else 0,
             "daily_exam_limit": -1 if is_prem else FREE_DAILY_EXAM_LIMIT,
+            "total_exam_count": user["total_exam_count"] if user and "total_exam_count" in user.keys() else 0,
+            "total_exam_limit": -1 if is_prem else FREE_TOTAL_EXAM_LIMIT,
+            "daily_words_count": user["daily_words_count"] if user and "daily_words_count" in user.keys() else 0,
+            "daily_words_limit": -1 if is_prem else FREE_DAILY_WORDS_LIMIT,
             "notifications_enabled": bool(user["notifications_enabled"]) if user and user["notifications_enabled"] is not None else True
         }
 
@@ -642,7 +654,7 @@ async def _ensure_daily_reset(db: aiosqlite.Connection, user_row: Any, today_str
     user_id = user_dict.get("user_id")
     if last_date != today_str and user_id:
         await db.execute(
-            "UPDATE users SET daily_ai_count = 0, daily_exam_count = 0, last_usage_date = ? WHERE user_id = ?",
+            "UPDATE users SET daily_ai_count = 0, daily_exam_count = 0, daily_words_count = 0, last_usage_date = ? WHERE user_id = ?",
             (today_str, user_id)
         )
         await db.commit()
@@ -947,7 +959,7 @@ async def get_referral_stats(user_id: int) -> Dict[str, Any]:
         "milestone_target": milestone_target,
         "milestone_reached": milestone_reached,
         "needed_for_milestone": needed,
-        "has_discount": milestone_reached,
+        "has_discount": milestone_reached and (discount_percent > 0),
         "discount_percent": discount_percent if milestone_reached else 0,
     }
 
@@ -990,9 +1002,10 @@ async def increment_ai_quota(user_id: int):
 
 async def check_exam_quota(user_id: int) -> Tuple[bool, int, int]:
     """
-    Проверить доступность проверки экзаменационных писем.
+    Проверить доступность проверки экзаменационных писем и устных ответов.
     Возвращает (разрешено, использовано_сегодня, лимит).
     Для Premium лимит равен -1 (безлимит).
+    Для бесплатного тарифа: максимум 1 в день И максимум 3 суммарно на аккаунт.
     """
     today_str = _get_current_date_str()
     is_premium, _ = await is_user_premium(user_id)
@@ -1006,12 +1019,18 @@ async def check_exam_quota(user_id: int) -> Tuple[bool, int, int]:
             if not row:
                 return True, 0, FREE_DAILY_EXAM_LIMIT
             row = await _ensure_daily_reset(db, row, today_str)
+
+            # Проверка суммарного лимита за всё время на бесплатном аккаунте
+            total_used = row["total_exam_count"] if "total_exam_count" in row.keys() and row["total_exam_count"] is not None else 0
+            if total_used >= FREE_TOTAL_EXAM_LIMIT:
+                return False, total_used, FREE_TOTAL_EXAM_LIMIT
+
             used = row["daily_exam_count"] or 0
             allowed = used < FREE_DAILY_EXAM_LIMIT
             return allowed, used, FREE_DAILY_EXAM_LIMIT
 
 async def increment_exam_quota(user_id: int):
-    """Увеличить счетчик проверенных экзаменационных работ"""
+    """Увеличить счетчик проверенных экзаменационных работ (дневной и общий)"""
     today_str = _get_current_date_str()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -1020,10 +1039,49 @@ async def increment_exam_quota(user_id: int):
             if row:
                 await _ensure_daily_reset(db, row, today_str)
                 await db.execute(
-                    "UPDATE users SET daily_exam_count = daily_exam_count + 1 WHERE user_id = ?",
+                    "UPDATE users SET daily_exam_count = daily_exam_count + 1, total_exam_count = COALESCE(total_exam_count, 0) + 1 WHERE user_id = ?",
                     (user_id,)
                 )
                 await db.commit()
+
+async def check_words_quota(user_id: int) -> Tuple[bool, int, int]:
+    """
+    Проверить доступность тренировки слов и карточек.
+    Возвращает (разрешено, использовано_сегодня, лимит).
+    Для Premium лимит равен -1 (безлимит).
+    Для бесплатного аккаунта: максимум FREE_DAILY_WORDS_LIMIT (20 слов в день).
+    """
+    today_str = _get_current_date_str()
+    is_premium, _ = await is_user_premium(user_id)
+    if is_premium:
+        return True, 0, -1
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return True, 0, FREE_DAILY_WORDS_LIMIT
+            row = await _ensure_daily_reset(db, row, today_str)
+            used = row["daily_words_count"] if "daily_words_count" in row.keys() and row["daily_words_count"] is not None else 0
+            allowed = used < FREE_DAILY_WORDS_LIMIT
+            return allowed, used, FREE_DAILY_WORDS_LIMIT
+
+async def increment_words_quota(user_id: int):
+    """Увеличить дневной счетчик пройденных слов"""
+    today_str = _get_current_date_str()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                await _ensure_daily_reset(db, row, today_str)
+                await db.execute(
+                    "UPDATE users SET daily_words_count = COALESCE(daily_words_count, 0) + 1 WHERE user_id = ?",
+                    (user_id,)
+                )
+                await db.commit()
+
 
 async def toggle_user_notifications(user_id: int) -> bool:
     """Переключить статус ежедневных напоминаний (Вкл/Выкл)"""

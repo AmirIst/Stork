@@ -5,7 +5,8 @@ from database import db
 from locales.manager import i18n
 from keyboards.inline import (
     get_article_keyboard,
-    get_next_article_keyboard
+    get_next_article_keyboard,
+    get_quota_exceeded_keyboard
 )
 from services.ui_helper import show_or_update_window
 
@@ -14,6 +15,20 @@ router = Router()
 
 async def send_article_challenge(callback: CallbackQuery, lang: str):
     """Отправка нового вопроса на угадывание артикля"""
+    allowed, count, limit = await db.check_words_quota(callback.from_user.id)
+    if not allowed:
+        text = (
+            f"🛑 *Дневной лимит тренировки слов исчерпан ({count}/{limit})*\n\n"
+            "Ты отлично потрудился сегодня! Бесплатные тренировки обновятся завтра в 00:00.\n"
+            "Хочешь учить немецкий без ограничений? Подключи *Stork Premium ⭐️*!"
+            if lang == "ru"
+            else f"🛑 *Daily word training limit reached ({count}/{limit})*\n\n"
+            "Great effort today! Free limit resets tomorrow at 00:00.\n"
+            "Want unlimited vocabulary training? Upgrade to *Stork Premium ⭐️*!"
+        )
+        await show_or_update_window(callback, text, reply_markup=get_quota_exceeded_keyboard(lang), parse_mode="Markdown")
+        return
+
     level, category = await db.get_user_filters(callback.from_user.id)
     word_data = await db.get_random_word(lang=lang, level=level, category=category)
     if not word_data:
@@ -78,6 +93,7 @@ async def cb_check_article(callback: CallbackQuery):
         result_header = i18n.get("article_wrong", lang, correct_article=word_data["article"])
 
     await db.update_daily_streak(callback.from_user.id)
+    await db.increment_words_quota(callback.from_user.id)
     await db.check_and_grant_achievements(callback.from_user.id)
 
     details = i18n.get(

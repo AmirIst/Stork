@@ -266,22 +266,22 @@ async def test_quota_and_premium_logic():
     # 1. Новый пользователь
     await db.get_or_create_user(test_uid, "test_user", "Tester")
 
-    # Проверка бесплатной квоты ИИ (10)
+    # Проверка бесплатной квоты ИИ (5)
     allowed, used, limit = await db.check_ai_quota(test_uid)
     assert allowed is True
-    assert limit == 10
+    assert limit == 5
 
-    # Проверка бесплатной квоты экзамена (3)
+    # Проверка бесплатной квоты экзамена (1)
     allowed, used, limit = await db.check_exam_quota(test_uid)
     assert allowed is True
-    assert limit == 3
+    assert limit == 1
 
     # Исчерпание квоты ИИ
-    for _ in range(10):
+    for _ in range(5):
         await db.increment_ai_quota(test_uid)
     allowed, used, limit = await db.check_ai_quota(test_uid)
     assert allowed is False
-    assert used >= 10
+    assert used >= 5
 
     # Активация Premium снимает все лимиты
     exp_date = await db.activate_premium(test_uid, days=7)
@@ -606,36 +606,35 @@ def test_premium_config_integrity():
         get_plan_by_id,
         get_plan_price,
     )
-    assert FREE_TRIAL_DAYS == 7
+    assert FREE_TRIAL_DAYS == 3
     assert len(PROMO_CODES) >= 5
     for code, data in PROMO_CODES.items():
         assert "days" in data and data["days"] > 0
         assert "description" in data
 
-    assert len(PREMIUM_PLANS) >= 3
+    assert len(PREMIUM_PLANS) == 5
     plan_ids = [p["id"] for p in PREMIUM_PLANS]
-    assert "plan_1d" in plan_ids
-    assert "plan_10d" in plan_ids
+    assert "plan_7d" in plan_ids
     assert "plan_30d" in plan_ids
+    assert "plan_90d" in plan_ids
+    assert "plan_365d" in plan_ids
+    assert "plan_lifetime" in plan_ids
 
-    # Проверка расчета цен и скидки
+    # Проверка цен
+    assert get_plan_by_id("plan_7d")["stars"] == 125
     monthly_plan = get_plan_by_id("plan_30d")
     assert monthly_plan is not None
     assert monthly_plan["is_monthly"] is True
-    regular_price = get_plan_price(monthly_plan, has_discount=False)
-    assert regular_price == 150
-    discounted_price = get_plan_price(monthly_plan, has_discount=True)
-    assert discounted_price == 75 # 50% скидка
-
-    # План на 1 день не получает скидку
-    daily_plan = get_plan_by_id("plan_1d")
-    assert get_plan_price(daily_plan, has_discount=True) == daily_plan["stars"]
+    assert monthly_plan["stars"] == 250
+    assert get_plan_by_id("plan_90d")["stars"] == 600
+    assert get_plan_by_id("plan_365d")["stars"] == 1500
+    assert get_plan_by_id("plan_lifetime")["stars"] == 2500
 
     # Проверка реферального конфига
     assert REFERRAL_CONFIG["days_per_invite"] == 1
     assert REFERRAL_CONFIG["milestone_invites"] == 10
-    assert REFERRAL_CONFIG["milestone_bonus_days"] == 5
-    assert REFERRAL_CONFIG["milestone_discount_percent"] == 50
+    assert REFERRAL_CONFIG["milestone_bonus_days"] == 14
+    assert REFERRAL_CONFIG["milestone_discount_percent"] == 0
 
 @pytest.mark.anyio
 async def test_trial_one_time_enforcement():
@@ -654,7 +653,7 @@ async def test_trial_one_time_enforcement():
     assert await db.is_trial_available(test_uid) is True
 
     # Первая активация
-    ok, status, until = await db.activate_trial_if_eligible(test_uid, days=7)
+    ok, status, until = await db.activate_trial_if_eligible(test_uid, days=3)
     assert ok is True
     assert status == "success"
     assert until is not None
@@ -663,7 +662,7 @@ async def test_trial_one_time_enforcement():
     assert await db.is_trial_available(test_uid) is False
 
     # Вторая активация должна быть заблокирована
-    ok2, status2, _ = await db.activate_trial_if_eligible(test_uid, days=7)
+    ok2, status2, _ = await db.activate_trial_if_eligible(test_uid, days=3)
     assert ok2 is False
     assert status2 == "already_used"
 
@@ -734,21 +733,21 @@ async def test_referral_system_and_milestones():
     assert stats_9["milestone_reached"] is False
     assert stats_9["has_discount"] is False
 
-    # 10-й реферал -> срабатывает супер-бонус (+5 дней, итого 15 дней суммарно!)
+    # 10-й реферал -> срабатывает супер-бонус (+14 дней, итого 24 дня суммарно!)
     tenth_uid = 999333010
     await db.get_or_create_user(tenth_uid, "ref_10", "Ref10")
     res_10 = await db.register_referral(inviter_id, tenth_uid)
     assert res_10 is not None
     assert res_10["total_referrals"] == 10
     assert res_10["milestone_hit"] is True
-    assert res_10["days_granted"] == 6 # 1 базовый + 5 бонусных
+    assert res_10["days_granted"] == 15 # 1 базовый + 14 бонусных
 
     stats_10 = await db.get_referral_stats(inviter_id)
     assert stats_10["count"] == 10
-    assert stats_10["days_earned"] == 15 # 10 * 1 + 5 = 15 дней ровно как в ТЗ!
+    assert stats_10["days_earned"] == 24 # 10 * 1 + 14 = 24 дня суммарно
     assert stats_10["milestone_reached"] is True
-    assert stats_10["has_discount"] is True
-    assert stats_10["discount_percent"] == 50
+    assert stats_10["has_discount"] is False
+    assert stats_10["discount_percent"] == 0
 
     # Повторная регистрация того же реферала отклоняется
     dup_res = await db.register_referral(inviter_id, tenth_uid)
@@ -1021,32 +1020,23 @@ def test_tribute_config_and_keyboard():
     from keyboards.inline import get_premium_plans_keyboard
 
     # 1. По умолчанию ссылки None, кнопки не отображаются (только Stars и навигация)
-    premium_config.TRIBUTE_CONFIG["plan_10d_url"] = None
+    premium_config.TRIBUTE_CONFIG["plan_7d_url"] = None
     premium_config.TRIBUTE_CONFIG["plan_30d_url"] = None
-    premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = None
 
     kb = get_premium_plans_keyboard(lang="ru")
     all_texts = [btn.text for row in kb.inline_keyboard for btn in row]
     assert not any("картой" in t.lower() for t in all_texts)
 
     # 2. Устанавливаем тестовые ссылки Tribute
-    premium_config.TRIBUTE_CONFIG["plan_10d_url"] = "https://t.me/tribute/app?startapp=p10d"
+    premium_config.TRIBUTE_CONFIG["plan_7d_url"] = "https://t.me/tribute/app?startapp=p7d"
     premium_config.TRIBUTE_CONFIG["plan_30d_url"] = "https://t.me/tribute/app?startapp=p30d"
-    premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = "https://t.me/tribute/app?startapp=p30d_sale"
 
-    # Обычный пользователь (без скидки)
+    # Обычный пользователь
     kb_with_cards = get_premium_plans_keyboard(lang="ru", has_discount=False)
     card_buttons = [btn for row in kb_with_cards.inline_keyboard for btn in row if "картой" in btn.text.lower()]
     assert len(card_buttons) == 2
-    assert card_buttons[0].url == "https://t.me/tribute/app?startapp=p10d"
+    assert card_buttons[0].url == "https://t.me/tribute/app?startapp=p7d"
     assert card_buttons[1].url == "https://t.me/tribute/app?startapp=p30d"
-
-    # Пользователь со скидкой 50%
-    kb_discount = get_premium_plans_keyboard(lang="ru", has_discount=True)
-    card_buttons_disc = [btn for row in kb_discount.inline_keyboard for btn in row if "картой" in btn.text.lower()]
-    assert len(card_buttons_disc) == 2
-    assert card_buttons_disc[1].url == "https://t.me/tribute/app?startapp=p30d_sale"
-    assert "-50%" in card_buttons_disc[1].text
 
     # Английская локаль
     kb_en = get_premium_plans_keyboard(lang="en", has_discount=False)
@@ -1054,9 +1044,8 @@ def test_tribute_config_and_keyboard():
     assert len(card_buttons_en) == 2
 
     # Очищаем обратно на None
-    premium_config.TRIBUTE_CONFIG["plan_10d_url"] = None
+    premium_config.TRIBUTE_CONFIG["plan_7d_url"] = None
     premium_config.TRIBUTE_CONFIG["plan_30d_url"] = None
-    premium_config.TRIBUTE_CONFIG["plan_30d_discount_url"] = None
 
 @pytest.mark.anyio
 async def test_db_user_cache_and_pragmas():
@@ -1100,6 +1089,76 @@ async def test_db_user_cache_and_pragmas():
             assert "idx_words_level_cat" in indexes
             assert "idx_progress_user_status_rev" in indexes
             assert "idx_translations_lang" in indexes
+
+@pytest.mark.anyio
+async def test_words_quota_and_lifetime_exam_limits():
+    """Тест новых лимитов: 20 слов в день, 1 экзамен в день, 3 экзамена суммарно на аккаунт"""
+    from database import db
+    import aiosqlite
+    await db.init_db()
+
+    assert db.FREE_DAILY_AI_LIMIT == 5
+    assert db.FREE_DAILY_EXAM_LIMIT == 1
+    assert db.FREE_TOTAL_EXAM_LIMIT == 3
+    assert db.FREE_DAILY_WORDS_LIMIT == 20
+
+    test_uid = 999444001
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("DELETE FROM users WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+    await db.get_or_create_user(test_uid, "quota_tester", "Tester")
+
+    # 1. Проверка квоты слов
+    allowed, used, limit = await db.check_words_quota(test_uid)
+    assert allowed is True
+    assert used == 0
+    assert limit == 20
+
+    for _ in range(20):
+        await db.increment_words_quota(test_uid)
+
+    allowed, used, limit = await db.check_words_quota(test_uid)
+    assert allowed is False
+    assert used == 20
+    assert limit == 20
+
+    # 2. Проверка экзаменов: 1 в день, максимум 3 на аккаунт
+    allowed, daily_used, daily_lim = await db.check_exam_quota(test_uid)
+    assert allowed is True
+    assert daily_used == 0
+
+    # 1-й экзамен
+    await db.increment_exam_quota(test_uid)
+    allowed, daily_used, _ = await db.check_exam_quota(test_uid)
+    assert allowed is False # Дневной лимит исчерпан (1/1)
+
+    # Имитируем смену дня и делаем 2-й и 3-й экзамены
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("UPDATE users SET daily_exam_count = 0 WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+    allowed, _, _ = await db.check_exam_quota(test_uid)
+    assert allowed is True
+
+    await db.increment_exam_quota(test_uid) # 2-й экзамен
+
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("UPDATE users SET daily_exam_count = 0 WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+    await db.increment_exam_quota(test_uid) # 3-й экзамен (достигнут лимит 3 на аккаунт)
+
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        await conn.execute("UPDATE users SET daily_exam_count = 0 WHERE user_id = ?", (test_uid,))
+        await conn.commit()
+
+    # Даже при сброшенном дневном счетчике, 4-й экзамен запрещен
+    allowed, total_used, max_lim = await db.check_exam_quota(test_uid)
+    assert allowed is False
+    assert total_used == 3
+    assert max_lim == 3
+
 
 
 
