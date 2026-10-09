@@ -1934,8 +1934,12 @@ def test_daily_workout_flow():
     # 3. Проверка БД методов
     async def _test_db():
         await db.init_db()
-        test_uid = 999999111
+        test_uid = 999999222
         await db.get_or_create_user(test_uid, "tester_wo", "Tester")
+        import aiosqlite
+        async with aiosqlite.connect(db.DB_PATH) as conn:
+            await conn.execute("DELETE FROM daily_workouts WHERE user_id = ?", (test_uid,))
+            await conn.commit()
 
         # До завершения
         is_done = await db.is_daily_workout_completed(test_uid)
@@ -1956,6 +1960,31 @@ def test_daily_workout_flow():
         assert is_done_after is True
 
     asyncio.run(_test_db())
+
+def test_tribute_service_webhook_logic():
+    from services.tribute_service import verify_tribute_signature, determine_plan_days
+    import hmac
+    import hashlib
+
+    # 1. Проверка определения дней по названию товара
+    assert determine_plan_days("Stork 1 месяц (B1)") == 30
+    assert determine_plan_days("1 month fast progress") == 30
+    assert determine_plan_days("3 месяца интенсив") == 90
+    assert determine_plan_days("1 год безлимит") == 365
+    assert determine_plan_days("Вечный VIP (навсегда)") == 36500
+    assert determine_plan_days("7 дней спринт") == 7
+
+    # 2. Проверка HMAC подписи
+    body = b'{"event":"shop_order","telegram_user_id":12345}'
+    api_key = "test_secret_api_key_123"
+    valid_sig = hmac.new(api_key.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+    assert verify_tribute_signature(body, valid_sig, api_key) is True
+    assert verify_tribute_signature(body, "wrong_signature", api_key) is False
+    assert verify_tribute_signature(body, None, api_key) is False
+    # Если ключ не задан - True для тестового режима
+    assert verify_tribute_signature(body, None, "") is True
+
 
 
 

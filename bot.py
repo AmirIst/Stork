@@ -68,6 +68,17 @@ async def main():
 
     await setup_bot_commands(bot)
 
+    # Запуск сервера вебхуков Tribute при наличии порта (например, на Heroku)
+    import os
+    port_env = os.getenv("PORT")
+    web_runner = None
+    if port_env:
+        try:
+            from services.tribute_service import start_tribute_web_server
+            web_runner = await start_tribute_web_server(bot, int(port_env))
+        except Exception as e:
+            logger.error(f"Не удалось запустить сервер вебхуков на порту {port_env}: {e}")
+
     # Запуск фонового планировщика ежедневных напоминаний
     reminder_task = asyncio.create_task(run_daily_reminder_worker(bot))
 
@@ -87,6 +98,11 @@ async def main():
                 logger.error(f"Временный сбой соединения Telegram: {e}. Автоматическое переподключение через 3 секунды...")
                 await asyncio.sleep(3)
     finally:
+        if web_runner:
+            try:
+                await web_runner.cleanup()
+            except Exception:
+                pass
         reminder_task.cancel()
         await bot.session.close()
 
