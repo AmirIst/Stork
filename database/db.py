@@ -240,6 +240,14 @@ async def init_db():
         );
         """)
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS bot_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
         # Главные супер-админы (владельцы) всегда имеют статус super_admin
         for sa_id in SUPER_ADMIN_IDS:
             sa_uname = "Amirist1" if sa_id == 6725392176 else "AmirIst1807"
@@ -2193,6 +2201,26 @@ async def export_database_backup(target_path: Optional[str] = None) -> str:
             shutil.copy2(str(DB_PATH), str(target_file))
             return str(target_file)
         raise FileNotFoundError(f"Файл локальной базы данных {DB_PATH} не найден")
+
+async def get_system_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    """Получение системной настройки из БД"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+            return default
+
+async def set_system_setting(key: str, value: str) -> None:
+    """Сохранение системной настройки в БД"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO bot_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+        """, (key, str(value)))
+        await db.commit()
+
 
 
 

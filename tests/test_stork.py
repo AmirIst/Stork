@@ -1864,6 +1864,26 @@ def test_card_service_generation():
     assert "85%" in diag_txt
     assert "t.me/share/url" in diag_url
 
+def test_system_settings_backup_chat():
+    from database import db
+    import asyncio
+
+    async def _test():
+        await db.init_db()
+        test_chat_id = "-1001234567890"
+        await db.set_system_setting("backup_chat_id", test_chat_id)
+        saved = await db.get_system_setting("backup_chat_id")
+        assert saved == test_chat_id
+
+        # Проверка перезаписи
+        new_chat_id = "-1009876543210"
+        await db.set_system_setting("backup_chat_id", new_chat_id)
+        saved_new = await db.get_system_setting("backup_chat_id")
+        assert saved_new == new_chat_id
+
+    asyncio.run(_test())
+
+
 
 
 

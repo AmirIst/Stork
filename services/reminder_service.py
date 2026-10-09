@@ -72,7 +72,8 @@ async def check_and_send_daily_backup(bot: Bot, force: bool = False) -> bool:
         if not (3 <= now_utc.hour <= 5):
             return False
 
-    backup_chat_raw = os.getenv("BACKUP_CHAT_ID", "").strip()
+    db_chat = await db.get_system_setting("backup_chat_id")
+    backup_chat_raw = (db_chat or os.getenv("BACKUP_CHAT_ID", "")).strip()
     target_chat = int(backup_chat_raw) if (backup_chat_raw and backup_chat_raw.lstrip("-").isdigit()) else SUPER_ADMIN_IDS[0]
 
     try:

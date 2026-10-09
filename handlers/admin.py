@@ -1024,15 +1024,88 @@ async def cb_admin_backup_channel(callback: CallbackQuery):
         await callback.answer("У вас нет прав для выгрузки базы данных", show_alert=True)
         return
 
-    await callback.answer("Отправляю бэкап в резервный чат...")
+    await callback.answer("Отправляю бэкап...")
     status_msg = await callback.message.answer("⏳ Создаю бэкап и отправляю в резервный чат...")
 
     from services.reminder_service import check_and_send_daily_backup
     success = await check_and_send_daily_backup(callback.bot, force=True)
+
+    db_chat = await db.get_system_setting("backup_chat_id")
+    target_info = f"в чат `{db_chat}`" if db_chat else "супер-администратору"
+
     if success:
-        await callback.message.answer("✅ Резервная копия базы данных успешно отправлена в назначенный канал / чат!")
+        await callback.message.answer(f"✅ Резервная копия базы данных успешно отправлена {target_info}!")
     else:
-        await callback.message.answer("❌ Не удалось отправить бэкап. Проверьте логи.")
+        await callback.message.answer("❌ Не удалось отправить бэкап. Проверьте права бота в группе.")
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+
+@router.message(Command("id", "chat_id"))
+async def cmd_get_chat_id(message: Message):
+    """Показывает ID текущего чата и пользователя"""
+    chat = message.chat
+    user = message.from_user
+    is_group = chat.type in ("group", "supergroup", "channel")
+    title = chat.title or "Личный диалог"
+
+    text = (
+        f"📍 *Информация о чате:*\n\n"
+        f"• Название: *{title}*\n"
+        f"• ID этого чата: `{chat.id}`\n"
+        f"• Тип: *{chat.type}*\n"
+        f"• Твой User ID: `{user.id}`\n"
+    )
+    if is_group:
+        text += (
+            f"\n💡 *Подключение бэкапов:*\n"
+            f"Чтобы Stork присылал сюда ночные резервные копии базы, напиши в этой группе: `/set_backup_chat`"
+        )
+    await message.answer(text, parse_mode="Markdown")
+
+@router.message(Command("set_backup_chat", "backup_here"))
+async def cmd_set_backup_chat(message: Message):
+    """Привязка текущей группы или чата для автоматических бэкапов базы данных"""
+    user_id = message.from_user.id
+    if user_id not in SUPER_ADMIN_IDS and not await db.can_download_backup(user_id):
+        await message.answer("❌ У вас нет прав администратора для настройки бэкапов.")
+        return
+
+    chat_id = message.chat.id
+    chat_title = message.chat.title or "Этот чат"
+
+    await db.set_system_setting("backup_chat_id", str(chat_id))
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📦 Проверить: отправить бэкап прямо сейчас", callback_data="admin_backup_channel")]
+    ])
+
+    await message.answer(
+        f"✅ *Этот чат успешно подключен для авто-бэкапов Stork!*\n\n"
+        f"• Чат: *{chat_title}*\n"
+        f"• ID чата: `{chat_id}`\n\n"
+        f"Теперь суточная копия базы данных будет автоматически приходить сюда каждую ночь (03:00 - 05:00 UTC).\n"
+        f"Нажмите кнопку ниже или введите `/backup_test`, чтобы отправить файл прямо сейчас.",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("backup_test"))
+async def cmd_backup_test(message: Message):
+    """Быстрый тест отправки резервной копии базы данных"""
+    user_id = message.from_user.id
+    if user_id not in SUPER_ADMIN_IDS and not await db.can_download_backup(user_id):
+        await message.answer("❌ У вас нет прав для выгрузки бэкапа.")
+        return
+
+    status_msg = await message.answer("⏳ Создаю и выгружаю резервную копию базы данных...")
+    from services.reminder_service import check_and_send_daily_backup
+    success = await check_and_send_daily_backup(message.bot, force=True)
+    if success:
+        await message.answer("✅ Резервная копия базы данных успешно выгружена в подключенный чат!")
+    else:
+        await message.answer("❌ Ошибка при отправке бэкапа. Убедитесь, что у бота есть права на отправку файлов.")
     try:
         await status_msg.delete()
     except Exception:

@@ -70,13 +70,21 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
 
     # Бейдж статуса справа
     is_vip = user_data.get("is_lifetime_vip") or user_data.get("is_premium")
-    badge_text = "⭐️ LIFETIME VIP" if user_data.get("is_lifetime_vip") else ("⭐️ PREMIUM" if is_vip else "FREE STUDENT")
+    badge_text = "LIFETIME VIP" if user_data.get("is_lifetime_vip") else ("PREMIUM VIP" if is_vip else "STUDENT")
     badge_bg = (180, 83, 9) if is_vip else (71, 85, 105)
     
-    badge_w, badge_h = 220, 44
-    badge_x = width - 80 - badge_w
-    draw_rounded_rect(draw, [badge_x, 75, badge_x + badge_w, 75 + badge_h], radius=12, fill=badge_bg)
-    draw.text((badge_x + 25, 85), badge_text, fill=text_white, font=get_font(20, bold=True))
+    badge_font = get_font(20, bold=True)
+    try:
+        bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
+        tw = bbox[2] - bbox[0]
+    except Exception:
+        tw = len(badge_text) * 12
+    badge_w = max(tw + 40, 160)
+    badge_h = 44
+    badge_x = width - 60 - badge_w
+    badge_y = 75
+    draw_rounded_rect(draw, [badge_x, badge_y, badge_x + badge_w, badge_y + badge_h], radius=12, fill=badge_bg)
+    draw.text((badge_x + 20, badge_y + 10), badge_text, fill=text_white, font=badge_font)
 
     # Разделительная линия
     draw.line([(60, 160), (width - 60, 160)], fill=border_color, width=1)
@@ -85,8 +93,8 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
     stats = [
         {"val": str(user_data.get("placement_level") or "A1"), "lbl": "УРОВЕНЬ CEFR", "color": accent_cyan},
         {"val": f"{user_data.get('known_words', 0)} / 3000", "lbl": "СЛОВАРНЫЙ ЗАПАС", "color": (52, 211, 153)}, # Emerald
-        {"val": f"🔥 {user_data.get('streak', 0)} дн.", "lbl": "СЕРИЯ ДНЕЙ", "color": (251, 146, 60)}, # Orange
-        {"val": f"⭐️ {user_data.get('score', 0)}", "lbl": "БАЛЛЫ ОПЫТА (XP)", "color": accent_gold},
+        {"val": f"{user_data.get('streak', 0)} ДН.", "lbl": "УДАРНЫЙ РЕЖИМ", "color": (251, 146, 60)}, # Orange
+        {"val": f"{user_data.get('score', 0)} XP", "lbl": "БАЛЛЫ ОПЫТА", "color": accent_gold},
     ]
 
     box_w = 440
@@ -107,7 +115,7 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
 
     # 4. Подвал: реферальная плашка
     draw.line([(60, 515), (width - 60, 515)], fill=border_color, width=1)
-    draw.text((60, 535), "🪶 Бот для изучения немецкого: t.me/stork_learn_german_bot", fill=text_muted, font=footer_font)
+    draw.text((60, 535), "STORK • t.me/stork_learn_german_bot", fill=text_muted, font=footer_font)
     draw.text((width - 340, 535), "Учи немецкий каждый день!", fill=accent_gold, font=footer_font)
 
     buf = io.BytesIO()
@@ -156,10 +164,10 @@ def generate_diagnostic_card_image(exam_data: Dict[str, Any]) -> bytes:
 
     # Сетка навыков справа
     skills = [
-        {"name": "📖 Чтение (Lesen)", "score": f"{exam_data.get('lesen_score', 0)}%"},
-        {"name": "🎧 Аудирование (Hören)", "score": f"{exam_data.get('hoeren_score', 0)}%"},
-        {"name": "✍️ Письмо (Schreiben)", "score": f"{exam_data.get('schreiben_score', 0)}%"},
-        {"name": "🗣 Говорение (Sprechen)", "score": f"{exam_data.get('sprechen_score', 0)}%"},
+        {"name": "Lesen (Чтение)", "score": f"{exam_data.get('lesen_score', 0)}%"},
+        {"name": "Hören (Аудирование)", "score": f"{exam_data.get('hoeren_score', 0)}%"},
+        {"name": "Schreiben (Письмо)", "score": f"{exam_data.get('schreiben_score', 0)}%"},
+        {"name": "Sprechen (Говорение)", "score": f"{exam_data.get('sprechen_score', 0)}%"},
     ]
 
     sx = 560
@@ -171,7 +179,7 @@ def generate_diagnostic_card_image(exam_data: Dict[str, Any]) -> bytes:
         draw.text((sx + 360, y + 15), sk["score"], fill=accent_gold, font=get_font(22, bold=True))
 
     draw.line([(60, 515), (width - 60, 515)], fill=border_color, width=1)
-    draw.text((60, 535), "🪶 Проверь свой немецкий: t.me/stork_learn_german_bot", fill=text_muted, font=footer_font)
+    draw.text((60, 535), "STORK EXAM • t.me/stork_learn_german_bot", fill=text_muted, font=footer_font)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
