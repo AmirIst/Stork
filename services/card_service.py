@@ -29,7 +29,7 @@ def draw_rounded_rect(draw: ImageDraw.ImageDraw, xy, radius: int, fill, outline=
     except Exception:
         draw.rectangle(xy, fill=fill, outline=outline, width=width)
 
-def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
+def generate_profile_card_image(user_data: Dict[str, Any], lang: str = "ru") -> bytes:
     """
     Генерирует графическую карточку ученика (Passport / Profile Card) 1080x600 пикселей.
     """
@@ -51,28 +51,51 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
     draw_rounded_rect(draw, [30, 30, width - 30, height - 30], radius=24, fill=card_bg, outline=border_color, width=2)
 
     # Шрифты
-    title_font = get_font(36, bold=True)
+    title_font = get_font(34, bold=True)
     subtitle_font = get_font(22, bold=False)
     stat_val_font = get_font(42, bold=True)
     stat_lbl_font = get_font(20, bold=False)
     footer_font = get_font(20, bold=False)
 
+    # Локализация текстов карточки
+    is_vip = user_data.get("is_lifetime_vip") or user_data.get("is_premium")
+    streak = user_data.get("streak", 0)
+
+    if lang == "en":
+        title_text = "STORK GERMAN PASSPORT"
+        badge_text = "LIFETIME VIP" if user_data.get("is_lifetime_vip") else ("PREMIUM VIP" if is_vip else "STUDENT")
+        stats = [
+            {"val": str(user_data.get("placement_level") or "A1"), "lbl": "CEFR LEVEL", "color": accent_cyan},
+            {"val": f"{user_data.get('known_words', 0)} / 3000", "lbl": "VOCABULARY", "color": (52, 211, 153)},
+            {"val": f"{streak} DAY{'S' if streak != 1 else ''}", "lbl": "DAILY STREAK", "color": (251, 146, 60)},
+            {"val": f"{user_data.get('score', 0)} XP", "lbl": "EXPERIENCE", "color": accent_gold},
+        ]
+        slogan_text = "Learn German every day!"
+        default_name = "Student"
+    else:
+        title_text = "STORK • ПАСПОРТ УЧЕНИКА"
+        badge_text = "LIFETIME VIP" if user_data.get("is_lifetime_vip") else ("PREMIUM VIP" if is_vip else "СТУДЕНТ")
+        stats = [
+            {"val": str(user_data.get("placement_level") or "A1"), "lbl": "УРОВЕНЬ CEFR", "color": accent_cyan},
+            {"val": f"{user_data.get('known_words', 0)} / 3000", "lbl": "СЛОВАРНЫЙ ЗАПАС", "color": (52, 211, 153)},
+            {"val": f"{streak} ДН.", "lbl": "УДАРНЫЙ РЕЖИМ", "color": (251, 146, 60)},
+            {"val": f"{user_data.get('score', 0)} XP", "lbl": "БАЛЛЫ ОПЫТА", "color": accent_gold},
+        ]
+        slogan_text = "Учи немецкий каждый день!"
+        default_name = "Ученик"
+
     # 2. Верхняя шапка: логотип и заголовок
-    # Акцентная полоса сверху
     draw.rectangle([60, 60, 66, 130], fill=accent_gold)
     
-    name = user_data.get("first_name") or "Ученик"
+    name = user_data.get("first_name") or default_name
     username = user_data.get("username")
     uname_str = f"@{username}" if username else f"ID: {user_data.get('user_id', '')}"
     
-    draw.text((85, 60), f"STORK GERMAN PASSPORT", fill=accent_gold, font=title_font)
+    draw.text((85, 60), title_text, fill=accent_gold, font=title_font)
     draw.text((85, 105), f"{name} ({uname_str})", fill=text_white, font=subtitle_font)
 
     # Бейдж статуса справа
-    is_vip = user_data.get("is_lifetime_vip") or user_data.get("is_premium")
-    badge_text = "LIFETIME VIP" if user_data.get("is_lifetime_vip") else ("PREMIUM VIP" if is_vip else "STUDENT")
     badge_bg = (180, 83, 9) if is_vip else (71, 85, 105)
-    
     badge_font = get_font(20, bold=True)
     try:
         bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
@@ -90,13 +113,6 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
     draw.line([(60, 160), (width - 60, 160)], fill=border_color, width=1)
 
     # 3. 4 блока ключевой статистики в сетке 2x2
-    stats = [
-        {"val": str(user_data.get("placement_level") or "A1"), "lbl": "УРОВЕНЬ CEFR", "color": accent_cyan},
-        {"val": f"{user_data.get('known_words', 0)} / 3000", "lbl": "СЛОВАРНЫЙ ЗАПАС", "color": (52, 211, 153)}, # Emerald
-        {"val": f"{user_data.get('streak', 0)} ДН.", "lbl": "УДАРНЫЙ РЕЖИМ", "color": (251, 146, 60)}, # Orange
-        {"val": f"{user_data.get('score', 0)} XP", "lbl": "БАЛЛЫ ОПЫТА", "color": accent_gold},
-    ]
-
     box_w = 440
     box_h = 130
     coords = [
@@ -108,7 +124,6 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
 
     for (bx, by), stat in zip(coords, stats):
         draw_rounded_rect(draw, [bx, by, bx + box_w, by + box_h], radius=16, fill=(15, 23, 42), outline=border_color, width=1)
-        # Маленькая акцентная полоска слева у каждого блока
         draw.rectangle([bx, by + 20, bx + 6, by + box_h - 20], fill=stat["color"])
         draw.text((bx + 30, by + 25), stat["val"], fill=stat["color"], font=stat_val_font)
         draw.text((bx + 30, by + 80), stat["lbl"], fill=text_muted, font=stat_lbl_font)
@@ -116,7 +131,7 @@ def generate_profile_card_image(user_data: Dict[str, Any]) -> bytes:
     # 4. Подвал: реферальная плашка
     draw.line([(60, 515), (width - 60, 515)], fill=border_color, width=1)
     draw.text((60, 535), "STORK • t.me/stork_learn_german_bot", fill=text_muted, font=footer_font)
-    draw.text((width - 340, 535), "Учи немецкий каждый день!", fill=accent_gold, font=footer_font)
+    draw.text((width - 340, 535), slogan_text, fill=accent_gold, font=footer_font)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

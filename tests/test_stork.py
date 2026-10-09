@@ -1836,9 +1836,13 @@ def test_card_service_generation():
         "known_words": 150,
         "is_premium": 1
     }
-    png_bytes = generate_profile_card_image(u_data)
-    assert len(png_bytes) > 1000
-    assert png_bytes[:4] == b"\x89PNG"
+    png_bytes_ru = generate_profile_card_image(u_data, lang="ru")
+    assert len(png_bytes_ru) > 1000
+    assert png_bytes_ru[:4] == b"\x89PNG"
+
+    png_bytes_en = generate_profile_card_image(u_data, lang="en")
+    assert len(png_bytes_en) > 1000
+    assert png_bytes_en[:4] == b"\x89PNG"
 
     txt, share_url = get_profile_card_share_content(u_data, "ru")
     assert "TestStudent" in txt

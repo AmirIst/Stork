@@ -430,7 +430,7 @@ async def cb_show_profile_card(callback: CallbackQuery):
     caption, share_url = get_profile_card_share_content(user_data, lang)
 
     try:
-        card_png = generate_profile_card_image(user_data)
+        card_png = generate_profile_card_image(user_data, lang=lang)
         photo_file = BufferedInputFile(card_png, filename=f"stork_passport_{user_id}.png")
         await callback.message.answer_photo(
             photo=photo_file,
