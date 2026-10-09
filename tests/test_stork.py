@@ -1887,6 +1887,77 @@ def test_system_settings_backup_chat():
 
     asyncio.run(_test())
 
+def test_daily_workout_flow():
+    from database import db
+    from services.workout_service import get_daily_question, DAILY_QUESTIONS
+    from keyboards.inline import (
+        get_main_menu_keyboard,
+        get_workout_welcome_keyboard,
+        get_workout_word_keyboard,
+        get_workout_article_keyboard,
+        get_workout_next_article_keyboard,
+        get_workout_question_keyboard,
+        get_workout_finish_keyboard
+    )
+    import asyncio
+
+    # 1. Проверка сервиса вопросов
+    q = get_daily_question(day_seed=42)
+    assert q is not None
+    assert "de" in q and "ru" in q and "en" in q
+    assert len(DAILY_QUESTIONS) >= 5
+
+    # 2. Проверка клавиатур
+    kb_menu_not_done = get_main_menu_keyboard("ru", workout_done=False)
+    assert any("daily_workout" == btn.callback_data for row in kb_menu_not_done.inline_keyboard for btn in row)
+    assert any("Тренировка дня (~3 мин)" in btn.text for row in kb_menu_not_done.inline_keyboard for btn in row)
+
+    kb_menu_done = get_main_menu_keyboard("ru", workout_done=True)
+    assert any("Тренировка дня выполнена" in btn.text for row in kb_menu_done.inline_keyboard for btn in row)
+
+    kb_welc = get_workout_welcome_keyboard("ru", already_done=False)
+    assert any("wo_start_step1" == btn.callback_data for row in kb_welc.inline_keyboard for btn in row)
+
+    kb_word = get_workout_word_keyboard(1, 5, 123, "ru")
+    assert any("wo_voice:123" == btn.callback_data for row in kb_word.inline_keyboard for btn in row)
+    assert any("wo_next_word" == btn.callback_data for row in kb_word.inline_keyboard for btn in row)
+
+    kb_art = get_workout_article_keyboard(123, "ru")
+    assert any("wo_art:123:der" == btn.callback_data for row in kb_art.inline_keyboard for btn in row)
+
+    kb_next_art = get_workout_next_article_keyboard(1, 5, "ru")
+    assert any("wo_next_art" == btn.callback_data for row in kb_next_art.inline_keyboard for btn in row)
+
+    kb_fin = get_workout_finish_keyboard("ru")
+    assert any("profile_card" == btn.callback_data for row in kb_fin.inline_keyboard for btn in row)
+
+    # 3. Проверка БД методов
+    async def _test_db():
+        await db.init_db()
+        test_uid = 999999111
+        await db.get_or_create_user(test_uid, "tester_wo", "Tester")
+
+        # До завершения
+        is_done = await db.is_daily_workout_completed(test_uid)
+        assert is_done is False
+
+        # Выборка слов
+        words, articles = await db.get_workout_words_and_quiz(test_uid, lang="ru", count=5)
+        assert len(words) == 5
+        assert len(articles) == 5
+
+        # Завершение тренировки
+        res = await db.complete_daily_workout(test_uid, xp=50)
+        assert res["xp_earned"] == 50
+        assert res["streak"] >= 1
+
+        # После завершения
+        is_done_after = await db.is_daily_workout_completed(test_uid)
+        assert is_done_after is True
+
+    asyncio.run(_test_db())
+
+
 
 
 

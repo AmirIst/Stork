@@ -40,9 +40,17 @@ def get_onboarding_welcome_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=menu_btn, callback_data="back_to_menu")]
     ])
 
-def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+def get_main_menu_keyboard(lang: str = "ru", workout_done: bool = False) -> InlineKeyboardMarkup:
     """Главное меню бота Stork: компактное, интуитивное и удобное"""
+    if workout_done:
+        wo_btn_text = "✅ Тренировка дня выполнена" if lang == "ru" else "✅ Daily Workout Completed"
+    else:
+        wo_btn_text = "⚡️ Тренировка дня (~3 мин)" if lang == "ru" else "⚡️ Daily Workout (~3 min)"
+
     return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=wo_btn_text, callback_data="daily_workout")
+        ],
         [
             InlineKeyboardButton(text=i18n.get("btn_hub_training", lang), callback_data="hub_training"),
             InlineKeyboardButton(text=i18n.get("btn_hub_vocab", lang), callback_data="hub_vocab")
@@ -752,6 +760,73 @@ def get_diagnostic_recommendations_keyboard(actions: List[Dict[str, Any]], lang:
         callback_data="back_to_menu"
     )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# ==============================================================================
+# КЛАВИАТУРЫ ЕЖЕДНЕВНОЙ ТРЕНИРОВКИ ДНЯ (DAILY WORKOUT)
+# ==============================================================================
+
+def get_workout_welcome_keyboard(lang: str = "ru", already_done: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура перед началом тренировки дня"""
+    if already_done:
+        start_btn = "🔄 Пройти еще раз (закрепить)" if lang == "ru" else "🔄 Repeat Workout"
+    else:
+        start_btn = "🚀 Начать тренировку дня (~3 мин)" if lang == "ru" else "🚀 Start Daily Workout (~3 min)"
+
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=start_btn, callback_data="wo_start_step1")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_workout_word_keyboard(idx: int, total: int, word_id: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура шага 1: изучение слова дня"""
+    next_text = "Следующее слово ➡️" if idx < total else "К проверке артиклей ➡️"
+    if lang != "ru":
+        next_text = "Next Word ➡️" if idx < total else "Next to Articles ➡️"
+
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔊 Озвучить" if lang == "ru" else "🔊 Listen", callback_data=f"wo_voice:{word_id}"),
+            InlineKeyboardButton(text=next_text, callback_data="wo_next_word")
+        ],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_workout_article_keyboard(word_id: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура шага 2: выбор артикля"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="der", callback_data=f"wo_art:{word_id}:der"),
+            InlineKeyboardButton(text="die", callback_data=f"wo_art:{word_id}:die"),
+            InlineKeyboardButton(text="das", callback_data=f"wo_art:{word_id}:das")
+        ],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_workout_next_article_keyboard(idx: int, total: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура после ответа на артикль"""
+    next_text = "Следующий артикль ➡️" if idx < total else "К вопросу от Аиста ➡️"
+    if lang != "ru":
+        next_text = "Next Question ➡️" if idx < total else "Next to Daily Question ➡️"
+
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=next_text, callback_data="wo_next_art")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_workout_question_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура шага 3: вопрос дня"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💡 Подсказка как ответить" if lang == "ru" else "💡 Hint how to answer", callback_data="wo_q_hint")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_workout_finish_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура завершения тренировки дня"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🪪 Моя карточка ученика" if lang == "ru" else "🪪 My Student Card", callback_data="profile_card")],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
 
 
 

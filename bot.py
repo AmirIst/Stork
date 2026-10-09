@@ -10,7 +10,7 @@ from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database.db import init_db
-from handlers import admin, common, articles, cards, quiz, placement, exam, ai_chat, filters, voice, premium, verbs, sprechen, listening, roleplay, diagnostic
+from handlers import admin, common, workout, articles, cards, quiz, placement, exam, ai_chat, filters, voice, premium, verbs, sprechen, listening, roleplay, diagnostic
 from services.reminder_service import run_daily_reminder_worker
 
 # Настройка логирования
@@ -26,6 +26,7 @@ async def setup_bot_commands(bot: Bot):
     commands = [
         BotCommand(command="start", description="Запустить бота / Start"),
         BotCommand(command="menu", description="Главное меню / Main menu"),
+        BotCommand(command="workout", description="Тренировка дня / Daily Workout"),
         BotCommand(command="test", description="Тест и готовность к Goethe B1 / Test"),
         BotCommand(command="lang", description="Сменить язык / Change language")
     ]
@@ -49,6 +50,7 @@ async def main():
     # Регистрация маршрутизаторов (роутеров)
     dp.include_router(admin.router)
     dp.include_router(common.router)
+    dp.include_router(workout.router)
     dp.include_router(diagnostic.router)
     dp.include_router(roleplay.router)
     dp.include_router(sprechen.router)

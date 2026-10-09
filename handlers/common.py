@@ -108,8 +108,9 @@ async def cmd_start(message: Message, state: FSMContext):
             )
         return
 
+    workout_done = await db.is_daily_workout_completed(message.from_user.id)
     text = i18n.get("welcome", lang, name=message.from_user.first_name or "Freund")
-    await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="Markdown")
+    await message.answer(text, reply_markup=get_main_menu_keyboard(lang, workout_done=workout_done), parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("onboarding_lang:"))
 async def cb_onboarding_lang(callback: CallbackQuery, state: FSMContext):
@@ -165,8 +166,9 @@ async def cmd_menu(message: Message, state: FSMContext):
     """Команда /menu: возврат в главное меню"""
     await state.clear()
     lang = await db.get_user_lang(message.from_user.id)
+    workout_done = await db.is_daily_workout_completed(message.from_user.id)
     text = i18n.get("menu_title", lang)
-    await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="Markdown")
+    await message.answer(text, reply_markup=get_main_menu_keyboard(lang, workout_done=workout_done), parse_mode="Markdown")
 
 @router.message(Command("lang"))
 async def cmd_language(message: Message):
@@ -181,8 +183,9 @@ async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
     lang = await db.get_user_lang(callback.from_user.id)
+    workout_done = await db.is_daily_workout_completed(callback.from_user.id)
     text = i18n.get("menu_title", lang)
-    kb = get_main_menu_keyboard(lang)
+    kb = get_main_menu_keyboard(lang, workout_done=workout_done)
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
 
 @router.callback_query(F.data == "hub_training")

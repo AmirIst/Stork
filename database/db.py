@@ -248,6 +248,17 @@ async def init_db():
         );
         """)
 
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS daily_workouts (
+            user_id INTEGER NOT NULL,
+            workout_date TEXT NOT NULL,
+            completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            xp_earned INTEGER DEFAULT 50,
+            PRIMARY KEY (user_id, workout_date)
+        );
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_workout_user ON daily_workouts(user_id, workout_date);")
+
         # Главные супер-админы (владельцы) всегда имеют статус super_admin
         for sa_id in SUPER_ADMIN_IDS:
             sa_uname = "Amirist1" if sa_id == 6725392176 else "AmirIst1807"
@@ -2220,6 +2231,107 @@ async def set_system_setting(key: str, value: str) -> None:
             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
         """, (key, str(value)))
         await db.commit()
+
+async def is_daily_workout_completed(user_id: int, date_str: Optional[str] = None) -> bool:
+    """Проверяет, выполнил ли пользователь тренировку дня за указанную дату (по умолчанию сегодня)"""
+    if not date_str:
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM daily_workouts WHERE user_id = ? AND workout_date = ?",
+            (user_id, date_str)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row is not None
+
+async def complete_daily_workout(user_id: int, xp: int = 50) -> Dict[str, Any]:
+    """Фиксирует завершение тренировки дня, начисляет XP и обновляет стрик"""
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    streak = await update_daily_streak(user_id)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO daily_workouts (user_id, workout_date, xp_earned)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, workout_date) DO UPDATE SET completed_at = CURRENT_TIMESTAMP
+        """, (user_id, today_str, xp))
+        await db.execute(
+            "UPDATE users SET score = score + ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (xp, user_id)
+        )
+        await db.commit()
+
+        async with db.execute("SELECT score FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            total_score = row[0] if row else xp
+
+    try:
+        from database.db import check_achievements
+        new_achievements = await check_achievements(user_id)
+    except Exception:
+        new_achievements = []
+
+    return {
+        "streak": streak,
+        "xp_earned": xp,
+        "total_score": total_score,
+        "new_achievements": new_achievements
+    }
+
+async def get_workout_words_and_quiz(user_id: int, lang: str = "ru", count: int = 5) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Получает 5 слов для изучения и 5 слов для блиц-проверки артиклей"""
+    level, _ = await get_user_filters(user_id)
+    if not level or level == "ALL":
+        level = "A1"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # 1. 5 слов для изучения (карточек)
+        q_words = """
+            SELECT w.id, w.word, w.article, w.plural, w.level, w.category, w.example_de,
+                   COALESCE(wt.translation, '') AS translation,
+                   COALESCE(wt.example_tr, '') AS example_tr
+            FROM words w
+            LEFT JOIN word_translations wt ON w.id = wt.word_id AND wt.lang = ?
+            WHERE w.level = ?
+            ORDER BY RANDOM() LIMIT ?
+        """
+        async with db.execute(q_words, (lang, level, count)) as cursor:
+            words = [dict(row) for row in await cursor.fetchall()]
+
+        # Если не набралось по уровню, берем любые
+        if len(words) < count:
+            async with db.execute(
+                "SELECT w.id, w.word, w.article, w.plural, w.level, w.category, w.example_de, COALESCE(wt.translation, '') AS translation, COALESCE(wt.example_tr, '') AS example_tr FROM words w LEFT JOIN word_translations wt ON w.id = wt.word_id AND wt.lang = ? ORDER BY RANDOM() LIMIT ?",
+                (lang, count)
+            ) as fb_cursor:
+                words = [dict(r) for r in await fb_cursor.fetchall()]
+
+        # 2. 5 слов для проверки артиклей (исключая первые)
+        word_ids = [w["id"] for w in words]
+        placeholders = ",".join("?" for _ in word_ids) if word_ids else "0"
+        q_articles = f"""
+            SELECT w.id, w.word, w.article,
+                   COALESCE(wt.translation, '') AS translation
+            FROM words w
+            LEFT JOIN word_translations wt ON w.id = wt.word_id AND wt.lang = ?
+            WHERE w.id NOT IN ({placeholders}) AND w.level = ?
+            ORDER BY RANDOM() LIMIT ?
+        """
+        params = [lang] + word_ids + [level, count]
+        async with db.execute(q_articles, params) as cursor:
+            article_quiz = [dict(row) for row in await cursor.fetchall()]
+
+        if len(article_quiz) < count:
+            async with db.execute(
+                "SELECT w.id, w.word, w.article, COALESCE(wt.translation, '') AS translation FROM words w LEFT JOIN word_translations wt ON w.id = wt.word_id AND wt.lang = ? ORDER BY RANDOM() LIMIT ?",
+                (lang, count)
+            ) as cur2:
+                article_quiz = [dict(r) for r in await cur2.fetchall()]
+
+    return words, article_quiz
+
 
 
 
