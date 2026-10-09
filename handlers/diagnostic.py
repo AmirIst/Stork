@@ -310,6 +310,55 @@ async def cb_my_diagnostic_profile(callback: CallbackQuery):
     await show_or_update_window(callback, text, reply_markup=kb, parse_mode="Markdown")
     await callback.answer()
 
+@router.callback_query(F.data.startswith("diag_share_card"))
+async def cb_diag_share_card(callback: CallbackQuery):
+    """Генерация и отправка сертификата готовности к экзамену"""
+    await callback.answer("Генерирую сертификат готовности...")
+    user_id = callback.from_user.id
+    lang = await db.get_user_lang(user_id)
+    latest = await db.get_latest_diagnostic(user_id)
+
+    if not latest:
+        await callback.answer("Сначала пройдите диагностику!", show_alert=True)
+        return
+
+    from services.card_service import generate_diagnostic_card_image, get_diagnostic_share_content
+    from keyboards.inline import get_diagnostic_card_keyboard
+    from aiogram.types import BufferedInputFile
+
+    exam_type = latest.get("exam_type", "goethe_b1")
+    exam_title = "Goethe-Zertifikat B1" if exam_type == "goethe_b1" else ("telc Deutsch B1" if exam_type == "telc_b1" else "CEFR Placement")
+
+    exam_data = {
+        "user_id": user_id,
+        "exam_title": exam_title,
+        "overall_score": latest.get("overall_diagnostic_score", 0),
+        "status_text": latest.get("readiness_status", "ГОТОВ К ЭКЗАМЕНУ"),
+        "estimated_cefr": latest.get("cefr_estimate", "B1"),
+        "lesen_score": latest.get("lesen_score", 0),
+        "hoeren_score": latest.get("hoeren_score", 0),
+        "schreiben_score": latest.get("schreiben_score", 0),
+        "sprechen_score": latest.get("sprechen_score", 0),
+    }
+
+    caption, share_url = get_diagnostic_share_content(exam_data, lang)
+
+    try:
+        card_png = generate_diagnostic_card_image(exam_data)
+        photo_file = BufferedInputFile(card_png, filename=f"stork_certificate_{user_id}.png")
+        await callback.message.answer_photo(
+            photo=photo_file,
+            caption=caption,
+            reply_markup=get_diagnostic_card_keyboard(share_url, lang),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка отправки сертификата: {e}")
+        await callback.message.answer(
+            caption,
+            reply_markup=get_diagnostic_card_keyboard(share_url, lang),
+            parse_mode="Markdown"
+        )
 
 # ==============================================================================
 # ЭКСПРЕСС-ТЕСТ УРОВНЯ (⚡ 2-3 минуты, 8 вопросов)

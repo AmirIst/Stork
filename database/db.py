@@ -2136,6 +2136,64 @@ async def update_learning_profile_goals(user_id: int, target_exam: str, target_l
         """, (target_exam, target_level, exam_date, user_id))
         await db.commit()
 
+async def export_database_backup(target_path: Optional[str] = None) -> str:
+    """Выгружает полноценный SQLite .db файл бэкапа из Turso Cloud или локальной базы"""
+    from database.connection import USE_TURSO, TURSO_URL, TURSO_TOKEN
+    from pathlib import Path
+    import sqlite3
+    import shutil
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    if not target_path:
+        backups_dir = Path(DB_PATH).parent / "backups"
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        target_path = str(backups_dir / f"stork_backup_{timestamp}.db")
+
+    target_file = Path(target_path)
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    if target_file.exists():
+        target_file.unlink()
+
+    if USE_TURSO and TURSO_URL and TURSO_TOKEN:
+        import libsql_client
+        client = libsql_client.create_client(TURSO_URL, auth_token=TURSO_TOKEN)
+        dst_conn = sqlite3.connect(str(target_file))
+        dst_cur = dst_conn.cursor()
+
+        tables_res = await client.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        for t_row in tables_res.rows:
+            t_name = t_row['name']
+            t_sql = t_row['sql']
+            if not t_sql:
+                continue
+            dst_cur.execute(t_sql)
+            rows_res = await client.execute(f"SELECT * FROM {t_name}")
+            if rows_res.rows:
+                cols = rows_res.columns
+                placeholders = ", ".join(["?"] * len(cols))
+                insert_sql = f"INSERT INTO {t_name} VALUES ({placeholders})"
+                for r in rows_res.rows:
+                    dst_cur.execute(insert_sql, list(r))
+
+        idx_res = await client.execute("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
+        for i_row in idx_res.rows:
+            if i_row['sql']:
+                try:
+                    dst_cur.execute(i_row['sql'])
+                except Exception:
+                    pass
+
+        dst_conn.commit()
+        dst_conn.close()
+        await client.close()
+        return str(target_file)
+    else:
+        # Локальный режим
+        if Path(DB_PATH).exists():
+            shutil.copy2(str(DB_PATH), str(target_file))
+            return str(target_file)
+        raise FileNotFoundError(f"Файл локальной базы данных {DB_PATH} не найден")
+
 
 
 

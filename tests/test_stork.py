@@ -1799,6 +1799,71 @@ async def test_admin_roles_and_notification_toggle():
     await db.remove_bot_admin(broadcaster_uid, removed_by=owner1)
     await db.remove_bot_admin(admin_uid, removed_by=owner1)
 
+def test_database_backup_export():
+    """Тест выгрузки полноценного SQLite бэкапа"""
+    from database import db
+    import os
+    import tempfile
+    import asyncio
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        exported_path = asyncio.run(db.export_database_backup(target_path=tmp_path))
+        assert os.path.exists(exported_path)
+        assert os.path.getsize(exported_path) > 0
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+def test_card_service_generation():
+    """Тест генерации графических и текстовых карточек ученика и экзамена"""
+    from services.card_service import (
+        generate_profile_card_image,
+        generate_diagnostic_card_image,
+        get_profile_card_share_content,
+        get_diagnostic_share_content
+    )
+
+    u_data = {
+        "user_id": 6725392176,
+        "first_name": "TestStudent",
+        "username": "tester",
+        "placement_level": "B1",
+        "score": 500,
+        "streak": 5,
+        "known_words": 150,
+        "is_premium": 1
+    }
+    png_bytes = generate_profile_card_image(u_data)
+    assert len(png_bytes) > 1000
+    assert png_bytes[:4] == b"\x89PNG"
+
+    txt, share_url = get_profile_card_share_content(u_data, "ru")
+    assert "TestStudent" in txt
+    assert "t.me/share/url" in share_url
+    assert "ref_6725392176" in share_url
+
+    diag_data = {
+        "user_id": 6725392176,
+        "exam_title": "telc Deutsch B1",
+        "overall_score": 85,
+        "status_text": "GUT",
+        "estimated_cefr": "B1.2",
+        "lesen_score": 90,
+        "hoeren_score": 80,
+        "schreiben_score": 85,
+        "sprechen_score": 85
+    }
+    diag_png = generate_diagnostic_card_image(diag_data)
+    assert len(diag_png) > 1000
+    assert diag_png[:4] == b"\x89PNG"
+
+    diag_txt, diag_url = get_diagnostic_share_content(diag_data, "ru")
+    assert "85%" in diag_txt
+    assert "t.me/share/url" in diag_url
+
 
 
 

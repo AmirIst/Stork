@@ -65,7 +65,8 @@ def get_admin_main_keyboard(role: str, notify_enabled: bool) -> InlineKeyboardMa
             InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast_menu")
         ])
         buttons.append([
-            InlineKeyboardButton(text="💾 Скачать бэкап базы данных", callback_data="admin_backup")
+            InlineKeyboardButton(text="💾 Скачать бэкап", callback_data="admin_backup"),
+            InlineKeyboardButton(text="📤 Бэкап в чат", callback_data="admin_backup_channel")
         ])
         if role == "super_admin":
             buttons.append([
@@ -969,40 +970,73 @@ async def process_promo_expiry(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_backup")
 async def cb_admin_backup(callback: CallbackQuery):
-    """Моментальная выгрузка файла stork_bot.db в чат Telegram"""
+    """Моментальная выгрузка файла базы данных в чат Telegram (из Turso Cloud или локально)"""
     if not await db.can_download_backup(callback.from_user.id):
         await callback.answer("У вас нет прав для скачивания базы данных", show_alert=True)
         return
 
-    if not os.path.exists(DB_PATH):
-        await callback.answer("Файл базы данных не найден!", show_alert=True)
-        return
-
-    size_bytes = os.path.getsize(DB_PATH)
-    size_kb = round(size_bytes / 1024, 1)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    backup_filename = f"stork_backup_{timestamp}.db"
-
-    await callback.answer("Формирую резервную копию...")
+    await callback.answer("Формирую резервную копию базы данных...")
+    status_msg = await callback.message.answer("⏳ Создаю актуальный бэкап базы данных Stork...")
 
     try:
-        input_file = FSInputFile(DB_PATH, filename=backup_filename)
+        backup_path = await db.export_database_backup()
+        size_bytes = os.path.getsize(backup_path)
+        size_kb = round(size_bytes / 1024, 1)
+        backup_filename = os.path.basename(backup_path)
+
+        input_file = FSInputFile(backup_path, filename=backup_filename)
         caption = (
             f"💾 *Резервная копия базы данных Stork*\n\n"
             f"• Файл: `{backup_filename}`\n"
             f"• Размер: *{size_kb} КБ*\n"
+            f"• Источник данных: *Turso Cloud (AWS Ireland / Local)*\n"
             f"• Дата выгрузки: *{datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')}*\n\n"
-            f"Храните этот файл в надежном месте. При необходимости его можно "
-            f"скопировать на любой сервер и продолжить работу без потерь данных."
+            f"Храните этот файл в надежном месте. Это полноценная SQLite база со всеми 3000 словами, переводами, пользователями, прогрессом и подписками."
         )
         await callback.message.answer_document(
             document=input_file,
             caption=caption,
             parse_mode="Markdown"
         )
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        # Очищаем временный файл через небольшую задержку
+        try:
+            if os.path.exists(backup_path) and "stork_backup_" in backup_path:
+                os.remove(backup_path)
+        except Exception:
+            pass
     except Exception as e:
-        logger.error(f"Ошибка отправки бэкапа базы данных: {e}")
-        await callback.message.answer(f"❌ Ошибка отправки бэкапа: {e}")
+        logger.error(f"Ошибка выгрузки бэкапа базы данных: {e}")
+        await callback.message.answer(f"❌ Ошибка выгрузки бэкапа: {e}")
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+@router.callback_query(F.data == "admin_backup_channel")
+async def cb_admin_backup_channel(callback: CallbackQuery):
+    """Принудительная выгрузка бэкапа в резервный канал или супер-админу"""
+    if not await db.can_download_backup(callback.from_user.id):
+        await callback.answer("У вас нет прав для выгрузки базы данных", show_alert=True)
+        return
+
+    await callback.answer("Отправляю бэкап в резервный чат...")
+    status_msg = await callback.message.answer("⏳ Создаю бэкап и отправляю в резервный чат...")
+
+    from services.reminder_service import check_and_send_daily_backup
+    success = await check_and_send_daily_backup(callback.bot, force=True)
+    if success:
+        await callback.message.answer("✅ Резервная копия базы данных успешно отправлена в назначенный канал / чат!")
+    else:
+        await callback.message.answer("❌ Не удалось отправить бэкап. Проверьте логи.")
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
 
 # ==========================================
 # Раздел: Рассылка сообщений пользователям

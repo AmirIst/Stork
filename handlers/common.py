@@ -403,6 +403,49 @@ async def cb_toggle_notif(callback: CallbackQuery):
     await callback.answer(notice)
     await cb_menu_stats(callback)
 
+@router.callback_query(F.data == "show_profile_card")
+async def cb_show_profile_card(callback: CallbackQuery):
+    """Генерация и отправка карточки ученика Stork (Student Passport)"""
+    await callback.answer("Генерирую вашу карточку ученика...")
+    user_id = callback.from_user.id
+    lang = await db.get_user_lang(user_id)
+    stats = await db.get_user_stats(user_id)
+
+    from services.card_service import generate_profile_card_image, get_profile_card_share_content
+    from keyboards.inline import get_profile_card_keyboard
+    from aiogram.types import BufferedInputFile
+
+    user_data = {
+        "user_id": user_id,
+        "first_name": callback.from_user.first_name or "Freund",
+        "username": callback.from_user.username,
+        "placement_level": stats.get("placement_level") or "A1",
+        "score": stats.get("score") or 0,
+        "streak": stats.get("streak") or 0,
+        "known_words": stats.get("known_words") or 0,
+        "is_premium": stats.get("is_premium") or 0,
+        "is_lifetime_vip": (stats.get("premium_until") == "lifetime")
+    }
+
+    caption, share_url = get_profile_card_share_content(user_data, lang)
+
+    try:
+        card_png = generate_profile_card_image(user_data)
+        photo_file = BufferedInputFile(card_png, filename=f"stork_passport_{user_id}.png")
+        await callback.message.answer_photo(
+            photo=photo_file,
+            caption=caption,
+            reply_markup=get_profile_card_keyboard(share_url, lang),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка отправки карточки профиля: {e}")
+        await callback.message.answer(
+            caption,
+            reply_markup=get_profile_card_keyboard(share_url, lang),
+            parse_mode="Markdown"
+        )
+
 # ==============================================================================
 # КОМАНДЫ УПРАВЛЕНИЯ ПОЖИЗНЕННЫМ VIP (ДЛЯ АДМИНИСТРАТОРА)
 # ==============================================================================

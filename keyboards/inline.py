@@ -277,14 +277,35 @@ def get_stats_keyboard(lang: str = "ru", notifications_enabled: bool = True) -> 
     """Клавиатура экрана статистики с кнопками управления профилем и напоминаниями"""
     test_btn_text = "🎓 Пройти тест на уровень" if lang == "ru" else "🎓 Take Level Placement Test"
     achieve_btn_text = i18n.get("btn_achievements", lang)
+    card_btn_text = "🪪 Моя карточка ученика" if lang == "ru" else "🪪 My Student Passport"
     notif_btn_text = i18n.get("btn_toggle_reminders_on" if notifications_enabled else "btn_toggle_reminders_off", lang)
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=card_btn_text, callback_data="show_profile_card")],
         [InlineKeyboardButton(text=achieve_btn_text, callback_data="menu_achievements")],
         [InlineKeyboardButton(text=test_btn_text, callback_data="menu_placement")],
         [
             InlineKeyboardButton(text=i18n.get("btn_premium", lang), callback_data="menu_premium"),
             InlineKeyboardButton(text=notif_btn_text, callback_data="toggle_notif")
         ],
+        [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
+    ])
+
+def get_profile_card_keyboard(share_url: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура для карточки профиля с кнопкой шеринга"""
+    share_btn_text = "🚀 Поделиться в Telegram" if lang == "ru" else "🚀 Share in Telegram"
+    back_btn_text = "⬅️ Назад в профиль" if lang == "ru" else "⬅️ Back to Profile"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=share_btn_text, url=share_url)],
+        [InlineKeyboardButton(text=back_btn_text, callback_data="menu_stats")]
+    ])
+
+def get_diagnostic_card_keyboard(share_url: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Клавиатура для сертификата готовности к экзамену"""
+    share_btn_text = "🚀 Поделиться результатом" if lang == "ru" else "🚀 Share Certificate"
+    plan_btn_text = "📊 Мой план подготовки" if lang == "ru" else "📊 My Study Plan"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=share_btn_text, url=share_url)],
+        [InlineKeyboardButton(text=plan_btn_text, callback_data="diag_my_profile")],
         [InlineKeyboardButton(text=i18n.get("btn_main_menu", lang), callback_data="back_to_menu")]
     ])
 
@@ -706,6 +727,11 @@ def get_telc_cancel_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 def get_diagnostic_recommendations_keyboard(actions: List[Dict[str, Any]], lang: str = "ru", exam_type: str = "goethe_b1") -> InlineKeyboardMarkup:
     """Клавиатура персонального плана тренировок с прямыми кнопками перехода"""
     buttons = []
+    share_btn_text = "🏆 Поделиться сертификатом" if lang == "ru" else "🏆 Share Certificate"
+    buttons.append([InlineKeyboardButton(
+        text=share_btn_text,
+        callback_data=f"diag_share_card:{exam_type}"
+    )])
     for act in actions:
         buttons.append([InlineKeyboardButton(
             text=act["title"],
