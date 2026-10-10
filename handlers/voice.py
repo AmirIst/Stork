@@ -36,13 +36,27 @@ async def cb_voice_word(callback: CallbackQuery):
         return
 
     voice_file = BufferedInputFile(audio_bytes, filename=f"{word_data['word']}.mp3")
-    caption = f"🔊 *{word_data['article']} {word_data['word']}*\n_{word_data.get('example_de', '')}_"
+    art_prefix = f"{word_data['article']} " if word_data.get('article') and word_data['article'] != '-' else ""
+    caption = f"🔊 *{art_prefix}{word_data['word']}*"
+    if word_data.get("example_de"):
+        caption += f"\n_{word_data['example_de']}_"
     
-    await callback.message.answer_voice(
-        voice=voice_file,
-        caption=caption,
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.answer_voice(
+            voice=voice_file,
+            caption=caption,
+            parse_mode="Markdown"
+        )
+    except Exception:
+        clean_caption = f"🔊 {art_prefix}{word_data['word']}"
+        if word_data.get("example_de"):
+            clean_caption += f"\n{word_data['example_de']}"
+        await callback.message.answer_voice(
+            voice=voice_file,
+            caption=clean_caption,
+            parse_mode=None
+        )
+
     mark_voice_sent(callback.from_user.id)
     await callback.answer()
 

@@ -166,9 +166,9 @@ async def cb_workout_voice(callback: CallbackQuery):
     full_phrase = f"{word_data['article']} {word_data['word']}" if word_data.get("article") else word_data["word"]
     audio_bytes = await synthesize_speech(full_phrase)
     if audio_bytes:
-        voice_file = BufferedInputFile(audio_bytes, filename=f"word_{word_id}.ogg")
+        voice_file = BufferedInputFile(audio_bytes, filename=f"word_{word_id}.mp3")
         await callback.message.answer_voice(voice=voice_file, caption=f"🗣 {full_phrase}")
-        await mark_voice_sent(callback.message.chat.id, callback.message.message_id)
+        mark_voice_sent(callback.from_user.id)
         await callback.answer("Озвучено!")
     else:
         await callback.answer("Ошибка синтеза речи", show_alert=True)

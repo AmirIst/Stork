@@ -4,9 +4,11 @@
 Не требует API-ключей, работает асинхронно с кэшированием в оперативной памяти.
 """
 import re
+import asyncio
 import logging
 from typing import Optional, Dict
 import edge_tts
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +20,78 @@ VOICE_FEMALE = "de-DE-KatjaNeural"     # Мягкий женский голос
 _AUDIO_CACHE: Dict[str, bytes] = {}
 MAX_CACHE_ENTRIES = 500
 
+async def _synthesize_google_tts(text: str) -> Optional[bytes]:
+    """
+    Надежный резервный синтез речи через Google Translate TTS.
+    Работает без ключей, гарантированно доступен на облачных серверах (Heroku, AWS).
+    """
+    if not text:
+        return None
+
+    clean = re.sub(r"[*_~`#]+", " ", text).strip()
+    if not clean:
+        return None
+
+    sentences = re.split(r'([.!?;\n]+)', clean)
+    tokens = []
+    for i in range(0, len(sentences) - 1, 2):
+        tokens.append(sentences[i] + sentences[i+1])
+    if len(sentences) % 2 == 1 and sentences[-1]:
+        tokens.append(sentences[-1])
+    if not tokens:
+        tokens = [clean]
+
+    chunks = []
+    current = ""
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if len(current) + len(token) + 1 <= 180:
+            current = f"{current} {token}".strip()
+        else:
+            if current:
+                chunks.append(current)
+            if len(token) <= 180:
+                current = token
+            else:
+                words = token.split()
+                sub = ""
+                for w in words:
+                    if len(sub) + len(w) + 1 <= 180:
+                        sub = f"{sub} {w}".strip()
+                    else:
+                        if sub:
+                            chunks.append(sub)
+                        sub = w
+                current = sub
+    if current:
+        chunks.append(current)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    }
+    audio_full = bytearray()
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            for chunk in chunks:
+                params = {"ie": "UTF-8", "tl": "de", "client": "tw-ob", "q": chunk}
+                resp = await client.get("https://translate.google.com/translate_tts", params=params, headers=headers)
+                if resp.status_code == 200 and resp.content:
+                    audio_full.extend(resp.content)
+                else:
+                    logger.warning(f"Google TTS returned status {resp.status_code} for chunk '{chunk[:20]}'")
+        if audio_full:
+            return bytes(audio_full)
+    except Exception as e:
+        logger.error(f"Ошибка резервного синтеза речи через Google TTS: {e}")
+    return None
+
 async def synthesize_speech(text: str, voice: str = VOICE_MALE) -> Optional[bytes]:
     """
     Синтезирует речь для заданного текста на немецком языке.
-    Возвращает байты MP3 аудио или None в случае ошибки.
+    Основной движок: Microsoft Edge TTS (Killian/Katja Neural).
+    Резервный движок: Google TTS (для облачных серверов с блокировкой websocket).
     """
     cleaned_text = text.strip()
     if not cleaned_text:
@@ -31,21 +101,32 @@ async def synthesize_speech(text: str, voice: str = VOICE_MALE) -> Optional[byte
     if cache_key in _AUDIO_CACHE:
         return _AUDIO_CACHE[cache_key]
 
+    # 1. Попытка через Edge-TTS с таймаутом
     try:
         communicate = edge_tts.Communicate(cleaned_text, voice=voice)
-        audio_stream = bytearray()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_stream.extend(chunk["data"])
+        async def _collect():
+            buf = bytearray()
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    buf.extend(chunk["data"])
+            return bytes(buf) if buf else None
 
-        if audio_stream:
-            audio_bytes = bytes(audio_stream)
+        audio_bytes = await asyncio.wait_for(_collect(), timeout=4.0)
+        if audio_bytes:
             if len(_AUDIO_CACHE) < MAX_CACHE_ENTRIES:
                 _AUDIO_CACHE[cache_key] = audio_bytes
             return audio_bytes
     except Exception as e:
-        logger.error(f"Ошибка синтеза речи через edge-tts: {e}")
+        logger.warning(f"edge-tts недоступен ({e}), переключаюсь на резервный Google TTS...")
 
+    # 2. Надежный резервный синтез Google TTS
+    google_audio = await _synthesize_google_tts(cleaned_text)
+    if google_audio:
+        if len(_AUDIO_CACHE) < MAX_CACHE_ENTRIES:
+            _AUDIO_CACHE[cache_key] = google_audio
+        return google_audio
+
+    logger.error(f"Все попытки синтеза речи не удались для текста: {cleaned_text[:50]}")
     return None
 
 async def synthesize_word_audio(article: str, word: str, example_de: Optional[str] = None) -> Optional[bytes]:

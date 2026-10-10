@@ -2009,6 +2009,23 @@ def test_tribute_service_webhook_logic():
     # Если ключ не задан - True для тестового режима
     assert verify_tribute_signature(body, None, "") is True
 
+def test_tts_synthesis_and_google_fallback():
+    import asyncio
+    from services.tts import synthesize_speech, synthesize_word_audio, _synthesize_google_tts
+
+    async def _test():
+        # 1. Проверка резервного Google TTS
+        google_res = await _synthesize_google_tts("der Regenschirm")
+        assert google_res is not None
+        assert len(google_res) > 500
+
+        # 2. Проверка общего метода synthesize_word_audio
+        audio = await synthesize_word_audio("der", "Regenschirm", "Ich habe meinen Regenschirm vergessen.")
+        assert audio is not None
+        assert len(audio) > 1000
+
+    asyncio.run(_test())
+
 
 
 
