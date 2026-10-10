@@ -380,9 +380,9 @@ def get_premium_plans_keyboard(lang: str = "ru", has_discount: bool = False) -> 
 def get_referral_keyboard(referral_link: str, lang: str = "ru", has_discount: bool = False) -> InlineKeyboardMarkup:
     """Клавиатура реферальной программы со ссылкой поделиться"""
     share_text = (
-        "Учи немецкий язык с умным ботом Stork! 🇩🇪🪶 Присоединяйся по ссылке:"
+        "Учу немецкий язык в умном боте Stork! 🇩🇪🪶 Тут есть интерактивные тренировки, разговорный клуб и подготовка к экзаменам. Залетай прокачивать язык вместе!"
         if lang == "ru"
-        else "Learn German with smart AI tutor Stork! 🇩🇪🪶 Join via my link:"
+        else "I'm learning German with AI tutor Stork! 🇩🇪🪶 Interactive daily workouts, speaking practice, and exam prep. Come join me!"
     )
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(referral_link)}&text={urllib.parse.quote(share_text)}"
 
@@ -492,10 +492,10 @@ def get_placement_result_keyboard(
 
     if referral_link:
         if lang == "ru":
-            share_text = f"🎓 Я только что сдал тест по немецкому в Stork на уровень {level} (результат {score}/{total})! 🇩🇪🪶 Проверь свой уровень немецкого:"
+            share_text = f"🎓 Я только что сдал тест по немецкому в Stork на уровень {level} (результат {score}/{total})! 🇩🇪🪶 Проверь и свой уровень!"
             share_btn_text = "🚀 Поделиться результатом"
         else:
-            share_text = f"🎓 I just tested my German with Stork and achieved Level {level} (score {score}/{total})! 🇩🇪🪶 Check your German level here:"
+            share_text = f"🎓 I just tested my German with Stork and achieved Level {level} (score {score}/{total})! 🇩🇪🪶 Check your German level too!"
             share_btn_text = "🚀 Share Certificate"
 
         share_url = f"https://t.me/share/url?url={urllib.parse.quote(referral_link)}&text={urllib.parse.quote(share_text)}"

@@ -431,6 +431,14 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
             "is_new": True
         }
 
+async def get_user(user_id: int) -> Optional[Dict[str, Any]]:
+    """Получить основные данные пользователя из таблицы users"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
 async def update_user_lang(user_id: int, lang: str):
     """Обновить язык интерфейса пользователя"""
     _USER_LANG_CACHE[user_id] = lang

@@ -38,7 +38,7 @@ async def start_daily_workout_entry(event: Message | CallbackQuery, state: FSMCo
     await state.clear()
 
     already_done = await db.is_daily_workout_completed(user_id)
-    user = await db.get_user(user_id)
+    user = await db.get_user(user_id) or await db.get_user_stats(user_id)
     streak = user.get("streak", 0) if user else 0
 
     if already_done:
@@ -118,28 +118,37 @@ async def show_word_card(callback: CallbackQuery, word_data: dict, current_idx: 
     w_de = word_data.get("word", "")
     art = word_data.get("article", "")
     pl = word_data.get("plural", "")
-    pl_str = f", die {pl}" if pl and pl != "-" else ""
+    if pl and pl.startswith("die "):
+        pl_str = f", {pl}"
+    elif pl and pl != "-":
+        pl_str = f", die {pl}"
+    else:
+        pl_str = ""
     art_str = f"*{art}* " if art and art != "-" else ""
     
     tr = word_data.get("translation", "")
     ex_de = word_data.get("example_de", "")
     ex_tr = word_data.get("example_tr", "")
 
+    example_block = ""
+    if ex_de:
+        example_block += f"\n\n📖 _{ex_de}_"
+        if ex_tr:
+            example_block += f"\n💬 _{ex_tr}_"
+
     if lang == "ru":
         text = (
             f"📚 *Шаг 1 из 3: Слова дня ({current_idx}/{total})*\n\n"
             f"🇩🇪 {art_str}*{w_de}*{pl_str}\n"
-            f"🇷🇺 *{tr}*\n\n"
-            f"📖 _{ex_de}_\n"
-            f"💬 _{ex_tr}_"
+            f"🇷🇺 *{tr}*"
+            f"{example_block}"
         )
     else:
         text = (
             f"📚 *Step 1 of 3: Daily Vocabulary ({current_idx}/{total})*\n\n"
             f"🇩🇪 {art_str}*{w_de}*{pl_str}\n"
-            f"🇬🇧 *{tr}*\n\n"
-            f"📖 _{ex_de}_\n"
-            f"💬 _{ex_tr}_"
+            f"🇬🇧 *{tr}*"
+            f"{example_block}"
         )
 
     kb = get_workout_word_keyboard(current_idx, total, word_data.get("id", 0), lang=lang)
@@ -169,6 +178,10 @@ async def cb_next_word(callback: CallbackQuery, state: FSMContext):
     """Переход к следующему слову дня или к шагу 2 (артикли)"""
     data = await state.get_data()
     words = data.get("words", [])
+    if not words:
+        await cb_start_step1(callback, state)
+        return
+
     idx = data.get("word_idx", 0) + 1
     lang = await db.get_user_lang(callback.from_user.id)
 
@@ -180,6 +193,9 @@ async def cb_next_word(callback: CallbackQuery, state: FSMContext):
         # Переход к шагу 2: Блиц-артикли
         await state.set_state(WorkoutState.in_articles)
         articles = data.get("articles", [])
+        if not articles:
+            await start_daily_workout_entry(callback, state)
+            return
         await show_article_question(callback, articles[0], 1, len(articles), lang)
         await callback.answer()
 
@@ -221,6 +237,11 @@ async def cb_answer_article(callback: CallbackQuery, state: FSMContext):
     art_correct = data.get("art_correct", 0)
     lang = await db.get_user_lang(callback.from_user.id)
 
+    if not articles or art_idx >= len(articles):
+        await callback.answer("Сессия обновлена. Начните тренировку снова.", show_alert=True)
+        await start_daily_workout_entry(callback, state)
+        return
+
     curr_art = articles[art_idx]
     correct_art = curr_art.get("article", "").lower().strip()
     is_correct = (choice.lower().strip() == correct_art)
@@ -255,6 +276,10 @@ async def cb_next_art(callback: CallbackQuery, state: FSMContext):
     """Переход к следующему артиклю или к шагу 3 (вопрос дня)"""
     data = await state.get_data()
     articles = data.get("articles", [])
+    if not articles:
+        await start_daily_workout_entry(callback, state)
+        return
+
     idx = data.get("art_idx", 0) + 1
     lang = await db.get_user_lang(callback.from_user.id)
 
@@ -265,7 +290,12 @@ async def cb_next_art(callback: CallbackQuery, state: FSMContext):
     else:
         # Переход к шагу 3: Вопрос дня от Аиста
         await state.set_state(WorkoutState.waiting_question_reply)
-        question = data.get("question", {})
+        question = data.get("question")
+        if not question:
+            day_num = int(datetime.now(timezone.utc).strftime("%j"))
+            question = get_daily_question(day_seed=day_num)
+            await state.update_data(question=question)
+
         q_de = question.get("de", "")
         q_tr = question.get(lang, question.get("ru", ""))
 
@@ -294,7 +324,10 @@ async def cb_next_art(callback: CallbackQuery, state: FSMContext):
 async def cb_workout_q_hint(callback: CallbackQuery, state: FSMContext):
     """Всплывающая подсказка для ответа на вопрос дня"""
     data = await state.get_data()
-    question = data.get("question", {})
+    question = data.get("question")
+    if not question:
+        day_num = int(datetime.now(timezone.utc).strftime("%j"))
+        question = get_daily_question(day_seed=day_num)
     lang = await db.get_user_lang(callback.from_user.id)
     hint = question.get("hint_" + lang, question.get("hint_ru", ""))
     await callback.answer(hint, show_alert=True)
@@ -304,7 +337,10 @@ async def cb_workout_q_hint(callback: CallbackQuery, state: FSMContext):
 async def process_workout_reply(message: Message, state: FSMContext):
     """Обработка текстового или голосового ответа на вопрос дня"""
     data = await state.get_data()
-    question = data.get("question", {})
+    question = data.get("question")
+    if not question:
+        day_num = int(datetime.now(timezone.utc).strftime("%j"))
+        question = get_daily_question(day_seed=day_num)
     art_correct = data.get("art_correct", 0)
     user_id = message.from_user.id
     lang = await db.get_user_lang(user_id)

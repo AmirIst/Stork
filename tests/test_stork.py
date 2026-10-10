@@ -1931,11 +1931,35 @@ def test_daily_workout_flow():
     kb_fin = get_workout_finish_keyboard("ru")
     assert any("profile_card" == btn.callback_data for row in kb_fin.inline_keyboard for btn in row)
 
-    # 3. Проверка БД методов
+    # 3. Проверка обновленного реферального текста (без двоеточия на конце и без "по ссылке:")
+    from keyboards.inline import get_referral_keyboard
+    import urllib.parse
+    kb_ref_ru = get_referral_keyboard("https://t.me/stork_bot?start=ref_123", lang="ru")
+    ref_btn_ru = kb_ref_ru.inline_keyboard[0][0]
+    unquoted_ru = urllib.parse.unquote(ref_btn_ru.url)
+    assert "t.me/share/url" in ref_btn_ru.url
+    assert "Присоединяйся по ссылке" not in unquoted_ru
+    assert "Залетай прокачивать язык вместе" in unquoted_ru
+
+    kb_ref_en = get_referral_keyboard("https://t.me/stork_bot?start=ref_123", lang="en")
+    ref_btn_en = kb_ref_en.inline_keyboard[0][0]
+    unquoted_en = urllib.parse.unquote(ref_btn_en.url)
+    assert "t.me/share/url" in ref_btn_en.url
+    assert "Join via my link" not in unquoted_en
+    assert "Come join me" in unquoted_en
+
+    # 4. Проверка БД методов
     async def _test_db():
         await db.init_db()
         test_uid = 999999222
         await db.get_or_create_user(test_uid, "tester_wo", "Tester")
+        
+        # Проверка get_user
+        u_dict = await db.get_user(test_uid)
+        assert u_dict is not None
+        assert u_dict["user_id"] == test_uid
+        assert u_dict["username"] == "tester_wo"
+
         import aiosqlite
         async with aiosqlite.connect(db.DB_PATH) as conn:
             await conn.execute("DELETE FROM daily_workouts WHERE user_id = ?", (test_uid,))

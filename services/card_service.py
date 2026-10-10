@@ -221,9 +221,9 @@ def get_profile_card_share_content(user_data: Dict[str, Any], lang: str = "ru") 
             f"📚 *Словарный запас:* *{words}* из 3000 слов\n"
             f"🔥 *Серия занятий:* *{streak}* дн. подряд\n"
             f"⭐️ *Очки опыта:* *{score}* XP\n\n"
-            f"Учу немецкий в интерактивном Telegram-боте *Stork*! Присоединяйся:"
+            f"Учу немецкий в интерактивном Telegram-боте *Stork*! Присоединяйся к занятиям!"
         )
-        share_msg = f"Я учу немецкий в боте Stork! Мой уровень: {level}, выучено {words} слов. Попробуй и ты!"
+        share_msg = f"Я учу немецкий в боте Stork! Мой уровень: {level}, выучено {words} слов. Прокачивай немецкий вместе со мной!"
     else:
         text = (
             f"🪶 *Stork Student Passport*\n\n"
@@ -232,9 +232,9 @@ def get_profile_card_share_content(user_data: Dict[str, Any], lang: str = "ru") 
             f"📚 *Vocabulary:* *{words}* / 3000 words\n"
             f"🔥 *Daily Streak:* *{streak}* days\n"
             f"⭐️ *Experience:* *{score}* XP\n\n"
-            f"Learning German with AI tutor *Stork*! Join me:"
+            f"Learning German with AI tutor *Stork*! Join me and boost your German!"
         )
-        share_msg = f"I'm learning German with Stork! My level is {level}, {words} words mastered. Check it out!"
+        share_msg = f"I'm learning German with Stork! Level: {level}, {words} words mastered. Learn German with me!"
 
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(ref_link)}&text={urllib.parse.quote(share_msg)}"
     return text, share_url
@@ -255,18 +255,18 @@ def get_diagnostic_share_content(exam_data: Dict[str, Any], lang: str = "ru") ->
             f"🎯 *Экзамен:* {exam_title}\n"
             f"📊 *Результат диагностики:* *{overall}% готовности*\n"
             f"🎓 *Подтвержденный уровень:* *{cefr}*\n\n"
-            f"Пройди бесплатный тест на готовность к экзамену в Stork:"
+            f"Пройди бесплатный тест на готовность к экзамену в Stork!"
         )
-        share_msg = f"Я прошел диагностику {exam_title} в боте Stork с результатом {overall}% ({cefr})! Проверь свой уровень:"
+        share_msg = f"Я прошел диагностику {exam_title} в боте Stork с результатом {overall}% ({cefr})! Проверь и свой уровень!"
     else:
         text = (
             f"🏆 *Stork Exam Readiness Certificate*\n\n"
             f"🎯 *Exam:* {exam_title}\n"
             f"📊 *Score:* *{overall}% readiness*\n"
             f"🎓 *Level:* *{cefr}*\n\n"
-            f"Test your German exam readiness for free with Stork:"
+            f"Test your German exam readiness for free with Stork!"
         )
-        share_msg = f"I completed the {exam_title} readiness test in Stork: {overall}% ({cefr})! Check yours:"
+        share_msg = f"I completed the {exam_title} readiness test in Stork: {overall}% ({cefr})! Test your level too!"
 
     share_url = f"https://t.me/share/url?url={urllib.parse.quote(ref_link)}&text={urllib.parse.quote(share_msg)}"
     return text, share_url
