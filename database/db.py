@@ -58,7 +58,10 @@ async def init_db():
             notifications_enabled INTEGER DEFAULT 1,
             last_streak_date TEXT DEFAULT '',
             last_reminder_date TEXT DEFAULT '',
-            lang_selected INTEGER DEFAULT 0
+            lang_selected INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            first_promo_code TEXT DEFAULT NULL,
+            source TEXT DEFAULT 'direct'
         );
         """)
 
@@ -307,6 +310,42 @@ async def init_db():
                 await db.execute("ALTER TABLE users ADD COLUMN last_reminder_date TEXT DEFAULT ''")
             if "lang_selected" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN lang_selected INTEGER DEFAULT 0")
+            if "created_at" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN created_at TEXT DEFAULT ''")
+                await db.execute("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at = '' OR created_at IS NULL")
+            if "first_promo_code" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN first_promo_code TEXT DEFAULT NULL")
+            if "source" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN source TEXT DEFAULT 'direct'")
+
+        # Заполняем first_promo_code для пользователей с историей активаций
+        await db.execute("""
+            UPDATE users 
+            SET first_promo_code = (
+                SELECT promo_code 
+                FROM user_promo_activations 
+                WHERE user_promo_activations.user_id = users.user_id 
+                ORDER BY activated_at ASC 
+                LIMIT 1
+            )
+            WHERE first_promo_code IS NULL AND EXISTS (
+                SELECT 1 FROM user_promo_activations WHERE user_id = users.user_id
+            )
+        """)
+
+        # Заполняем source для пользователей по реферальной ссылке
+        await db.execute("""
+            UPDATE users 
+            SET source = 'ref_' || (
+                SELECT inviter_id 
+                FROM referrals 
+                WHERE referrals.referred_id = users.user_id 
+                LIMIT 1
+            )
+            WHERE (source IS NULL OR source = 'direct') AND EXISTS (
+                SELECT 1 FROM referrals WHERE referred_id = users.user_id
+            )
+        """)
 
         # Миграция: проверяем наличие столбца status в user_progress
         async with db.execute("PRAGMA table_info(user_progress)") as cursor:
@@ -355,17 +394,14 @@ async def init_db():
             await db.commit()
             logger.info(f"Словарь Stork ({len(INITIAL_WORDS)} слов) успешно синхронизирован с базой данных.")
 
-        # Инициализация базовых промокодов, если таблица пуста
-        async with db.execute("SELECT COUNT(*) FROM promo_codes") as cursor:
-            promo_cnt = (await cursor.fetchone())[0]
-            if promo_cnt == 0:
-                for p_code, p_info in PROMO_CODES.items():
-                    await db.execute("""
-                        INSERT OR IGNORE INTO promo_codes (code, promo_type, days, description)
-                        VALUES (?, 'days', ?, ?)
-                    """, (p_code.upper(), int(p_info.get("days", 30)), p_info.get("description", "")))
-                await db.commit()
-                logger.info("Базовые промокоды Stork успешно инициализированы в таблице promo_codes.")
+        # Инициализация и синхронизация всех базовых промокодов из конфига
+        for p_code, p_info in PROMO_CODES.items():
+            await db.execute("""
+                INSERT OR IGNORE INTO promo_codes (code, promo_type, days, description)
+                VALUES (?, 'days', ?, ?)
+            """, (p_code.upper(), int(p_info.get("days", 30)), p_info.get("description", "")))
+        await db.commit()
+        logger.info("Базовые промокоды Stork успешно синхронизированы в таблице promo_codes.")
 
         # Загрузка ролей администраторов и настроек оповещений в оперативный кэш
         async with db.execute("SELECT user_id, role, notify_payments FROM bot_admins") as cursor:
@@ -397,8 +433,14 @@ def clear_user_cache(user_id: Optional[int] = None):
             _ACTIVE_ADMINS_CACHE[sa_id] = "super_admin"
             _ADMIN_NOTIFY_CACHE[sa_id] = 1
 
-async def get_or_create_user(user_id: int, username: Optional[str], first_name: Optional[str]) -> Dict[str, Any]:
-    """Получить или зарегистрировать пользователя"""
+async def get_or_create_user(
+    user_id: int,
+    username: Optional[str],
+    first_name: Optional[str],
+    source: Optional[str] = None,
+    first_promo_code: Optional[str] = None
+) -> Dict[str, Any]:
+    """Получить или зарегистрировать пользователя с фиксацией источника и первого промокода"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
@@ -408,11 +450,32 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
                 res["is_new"] = False
                 _USER_LANG_CACHE[user_id] = res.get("native_lang") or DEFAULT_LANGUAGE
                 _USER_FILTERS_CACHE[user_id] = (res.get("selected_level") or "ALL", res.get("selected_category") or "ALL")
+
+                # Обновляем источник или первый промокод, если они ранее не были записаны
+                updates = []
+                params = []
+                if source and source != "direct" and (not res.get("source") or res.get("source") == "direct"):
+                    updates.append("source = ?")
+                    params.append(source)
+                    res["source"] = source
+                if first_promo_code and not res.get("first_promo_code"):
+                    updates.append("first_promo_code = ?")
+                    params.append(first_promo_code)
+                    res["first_promo_code"] = first_promo_code
+                if updates:
+                    params.append(user_id)
+                    await db.execute(f"UPDATE users SET {', '.join(updates)} WHERE user_id = ?", tuple(params))
+                    await db.commit()
+
                 return res
 
+        src_val = source or "direct"
         await db.execute(
-            "INSERT INTO users (user_id, username, first_name, native_lang, selected_level, selected_category, lang_selected) VALUES (?, ?, ?, ?, 'ALL', 'ALL', 0)",
-            (user_id, username or "", first_name or "", DEFAULT_LANGUAGE)
+            """INSERT INTO users (
+                user_id, username, first_name, native_lang, selected_level, 
+                selected_category, lang_selected, source, first_promo_code
+            ) VALUES (?, ?, ?, ?, 'ALL', 'ALL', 0, ?, ?)""",
+            (user_id, username or "", first_name or "", DEFAULT_LANGUAGE, src_val, first_promo_code)
         )
         await db.commit()
         _USER_LANG_CACHE[user_id] = DEFAULT_LANGUAGE
@@ -428,6 +491,8 @@ async def get_or_create_user(user_id: int, username: Optional[str], first_name: 
             "streak": 0,
             "trial_used": 0,
             "lang_selected": 0,
+            "source": src_val,
+            "first_promo_code": first_promo_code,
             "is_new": True
         }
 
@@ -1051,6 +1116,11 @@ async def activate_promo_code(user_id: int, code: str) -> Tuple[bool, str, int, 
                 "UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?",
                 (normalized_code,)
             )
+            # Фиксируем первый промокод пользователя, если еще не был зафиксирован
+            await db.execute(
+                "UPDATE users SET first_promo_code = COALESCE(first_promo_code, ?) WHERE user_id = ?",
+                (normalized_code, user_id)
+            )
 
             if p_type == "lifetime":
                 await db.execute("UPDATE users SET is_lifetime_vip = 1, is_premium = 1, subscription_type = 'promo_lifetime' WHERE user_id = ?", (user_id,))
@@ -1075,7 +1145,10 @@ async def activate_promo_code(user_id: int, code: str) -> Tuple[bool, str, int, 
             "INSERT INTO user_promo_activations (user_id, promo_code, days_granted) VALUES (?, ?, ?)",
             (user_id, normalized_code, days)
         )
-        await db.execute("UPDATE users SET subscription_type = 'promo' WHERE user_id = ?", (user_id,))
+        await db.execute(
+            "UPDATE users SET subscription_type = 'promo', first_promo_code = COALESCE(first_promo_code, ?) WHERE user_id = ?",
+            (normalized_code, user_id)
+        )
         await db.commit()
 
     until_str = await activate_premium(user_id, days=days)
@@ -1230,6 +1303,17 @@ async def get_user_admin_info(target: Any) -> Optional[Dict[str, Any]]:
             u["payments_count"] = p_row[0]
             u["payments_sum"] = p_row[1]
 
+        if not u.get("first_promo_code"):
+            async with db.execute("SELECT promo_code FROM user_promo_activations WHERE user_id = ? ORDER BY activated_at ASC LIMIT 1", (user_id,)) as cur:
+                p_row = await cur.fetchone()
+                if p_row:
+                    u["first_promo_code"] = p_row[0]
+
+        async with db.execute("SELECT inviter_id FROM referrals WHERE referred_id = ? LIMIT 1", (user_id,)) as cur:
+            r_row = await cur.fetchone()
+            if r_row:
+                u["referred_by"] = r_row[0]
+
         return u
 
 async def grant_user_premium(
@@ -1328,6 +1412,104 @@ async def delete_db_promo_code(code: str) -> bool:
         await db.execute("DELETE FROM promo_codes WHERE code = ?", (norm_code,))
         await db.commit()
     return True
+
+async def promo_code_exists(code: str) -> bool:
+    """Проверить, существует ли промокод в конфигурации или в таблице промокодов"""
+    norm_code = code.strip().upper()
+    if norm_code in PROMO_CODES:
+        return True
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT 1 FROM promo_codes WHERE code = ? AND is_active = 1", (norm_code,)) as cur:
+            return bool(await cur.fetchone())
+
+async def get_user_first_promo(user_id: int) -> Optional[str]:
+    """Получить первый промокод пользователя (из users или истории активаций)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT first_promo_code FROM users WHERE user_id = ?", (user_id,)) as cur:
+            row = await cur.fetchone()
+            if row and row[0]:
+                return row[0]
+        async with db.execute("SELECT promo_code FROM user_promo_activations WHERE user_id = ? ORDER BY activated_at ASC LIMIT 1", (user_id,)) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+async def get_all_users_admin(
+    filter_source: str = "all",
+    page: int = 1,
+    per_page: int = 5
+) -> Tuple[List[Dict[str, Any]], int, int]:
+    """
+    Получить постраничный список пользователей с информацией об источнике перехода и первом промокоде.
+    Возвращает: (users_list, total_count, total_pages)
+    Фильтры:
+      - 'all': все пользователи
+      - 'shorts': пришедшие по промокоду или ссылке SHORTS
+      - 'stream': пришедшие по промокоду или ссылке STREAM
+      - 'promo': любой активированный промокод
+      - 'ref': по реферальной ссылке
+      - 'direct': прямой органический вход (без промокодов)
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        where_clauses = []
+        flt = (filter_source or "all").lower()
+
+        if flt == "shorts":
+            where_clauses.append("(LOWER(COALESCE(u.first_promo_code, '')) = 'shorts' OR LOWER(COALESCE(u.source, '')) LIKE '%shorts%')")
+        elif flt == "stream":
+            where_clauses.append("(LOWER(COALESCE(u.first_promo_code, '')) = 'stream' OR LOWER(COALESCE(u.source, '')) LIKE '%stream%')")
+        elif flt == "promo":
+            where_clauses.append("(u.first_promo_code IS NOT NULL OR u.source LIKE 'promo:%' OR EXISTS (SELECT 1 FROM user_promo_activations WHERE user_id = u.user_id))")
+        elif flt == "ref":
+            where_clauses.append("(u.source LIKE 'ref_%' OR EXISTS (SELECT 1 FROM referrals WHERE referred_id = u.user_id))")
+        elif flt in ("direct", "organic", "nopromo"):
+            where_clauses.append("(u.first_promo_code IS NULL AND (u.source IS NULL OR u.source = 'direct') AND NOT EXISTS (SELECT 1 FROM user_promo_activations WHERE user_id = u.user_id) AND NOT EXISTS (SELECT 1 FROM referrals WHERE referred_id = u.user_id))")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        count_sql = f"SELECT COUNT(*) FROM users u {where_sql}"
+        async with db.execute(count_sql) as cur:
+            total_count = (await cur.fetchone())[0]
+
+        total_pages = max(1, (total_count + per_page - 1) // per_page)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * per_page
+
+        query_sql = f"""
+            SELECT 
+                u.user_id,
+                u.username,
+                u.first_name,
+                u.native_lang,
+                u.score,
+                u.streak,
+                u.is_premium,
+                u.premium_until,
+                u.is_lifetime_vip,
+                u.subscription_type,
+                u.created_at,
+                u.last_active,
+                u.source,
+                u.first_promo_code,
+                (SELECT promo_code FROM user_promo_activations WHERE user_id = u.user_id ORDER BY activated_at ASC LIMIT 1) AS earliest_promo,
+                (SELECT inviter_id FROM referrals WHERE referred_id = u.user_id LIMIT 1) AS inviter_id
+            FROM users u
+            {where_sql}
+            ORDER BY u.created_at DESC, u.user_id DESC
+            LIMIT ? OFFSET ?
+        """
+        async with db.execute(query_sql, (per_page, offset)) as cur:
+            rows = await cur.fetchall()
+
+        users_list = []
+        for r in rows:
+            u_dict = dict(r)
+            if not u_dict.get("first_promo_code") and u_dict.get("earliest_promo"):
+                u_dict["first_promo_code"] = u_dict["earliest_promo"]
+            users_list.append(u_dict)
+
+        return users_list, total_count, total_pages
 
 async def get_broadcast_user_ids(audience: str = "all") -> List[int]:
     """Получить список ID пользователей для рассылки (all, premium, free)"""

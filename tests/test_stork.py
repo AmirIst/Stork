@@ -2026,6 +2026,117 @@ def test_tts_synthesis_and_google_fallback():
 
     asyncio.run(_test())
 
+def test_shorts_and_stream_promo_codes_and_attribution():
+    import asyncio
+    from database import db
+    from premium_config import PROMO_CODES
+
+    # 1. Проверяем наличие промокодов SHORTS и STREAM в конфигурации
+    assert "SHORTS" in PROMO_CODES
+    assert PROMO_CODES["SHORTS"]["days"] == 3
+    assert "STREAM" in PROMO_CODES
+    assert PROMO_CODES["STREAM"]["days"] == 3
+
+    async def _test():
+        import aiosqlite
+        await db.init_db()
+
+        # Тестовые пользователи
+        uid_shorts = 999888111
+        uid_stream = 999888222
+        uid_direct = 999888333
+
+        # Очищаем перед тестом для идемпотентности
+        async with aiosqlite.connect(db.DB_PATH) as conn:
+            for u in (uid_shorts, uid_stream, uid_direct):
+                await conn.execute("DELETE FROM users WHERE user_id = ?", (u,))
+                await conn.execute("DELETE FROM user_promo_activations WHERE user_id = ?", (u,))
+            await conn.commit()
+
+        # Проверяем promo_code_exists
+        assert await db.promo_code_exists("SHORTS") is True
+        assert await db.promo_code_exists("STREAM") is True
+        assert await db.promo_code_exists("NONEXISTENT_XYZ") is False
+
+        # Тестовый пользователь из Shorts
+        user_shorts = await db.get_or_create_user(
+            user_id=uid_shorts,
+            username="shorts_viewer",
+            first_name="ShortsFan",
+            source="promo:SHORTS",
+            first_promo_code="SHORTS"
+        )
+        assert user_shorts["source"] == "promo:SHORTS"
+        assert user_shorts["first_promo_code"] == "SHORTS"
+
+        # Активация промокода SHORTS
+        ok, status, days, until = await db.activate_promo_code(uid_shorts, "SHORTS")
+        assert ok is True
+        assert days == 3
+        assert status == "success"
+
+        # Повторная активация запрещена
+        ok_dup, status_dup, _, _ = await db.activate_promo_code(uid_shorts, "SHORTS")
+        assert ok_dup is False
+        assert status_dup == "already_used"
+
+        # Тестовый пользователь из Stream
+        user_stream = await db.get_or_create_user(
+            user_id=uid_stream,
+            username="stream_watcher",
+            first_name="StreamFan",
+            source="promo:STREAM",
+            first_promo_code="STREAM"
+        )
+        ok_stream, _, days_stream, _ = await db.activate_promo_code(uid_stream, "STREAM")
+        assert ok_stream is True
+        assert days_stream == 3
+
+        # Тестовый органический пользователь без промокода
+        await db.get_or_create_user(
+            user_id=uid_direct,
+            username="organic_user",
+            first_name="DirectGuy"
+        )
+
+        # Проверка get_user_admin_info
+        info_shorts = await db.get_user_admin_info(uid_shorts)
+        assert info_shorts["first_promo_code"] == "SHORTS"
+        assert "shorts" in info_shorts["source"].lower()
+
+        info_stream = await db.get_user_admin_info(uid_stream)
+        assert info_stream["first_promo_code"] == "STREAM"
+
+        info_direct = await db.get_user_admin_info(uid_direct)
+        assert info_direct["first_promo_code"] is None
+
+        # Проверка get_all_users_admin с фильтрами и пагинацией
+        all_users, total_cnt, total_pages = await db.get_all_users_admin(filter_source="all", page=1, per_page=100)
+        assert total_cnt >= 3
+        uids = [u["user_id"] for u in all_users]
+        assert uid_shorts in uids
+        assert uid_stream in uids
+        assert uid_direct in uids
+
+        # Фильтр SHORTS
+        shorts_users, cnt_shorts, _ = await db.get_all_users_admin(filter_source="shorts", page=1, per_page=50)
+        assert cnt_shorts >= 1
+        assert any(u["user_id"] == uid_shorts for u in shorts_users)
+        assert not any(u["user_id"] == uid_stream for u in shorts_users)
+
+        # Фильтр STREAM
+        stream_users, cnt_stream, _ = await db.get_all_users_admin(filter_source="stream", page=1, per_page=50)
+        assert cnt_stream >= 1
+        assert any(u["user_id"] == uid_stream for u in stream_users)
+        assert not any(u["user_id"] == uid_shorts for u in stream_users)
+
+        # Фильтр Direct / без промо
+        direct_users, cnt_direct, _ = await db.get_all_users_admin(filter_source="direct", page=1, per_page=1000)
+        assert cnt_direct >= 1
+        assert any(u["user_id"] == uid_direct for u in direct_users)
+
+    asyncio.run(_test())
+
 
 
 

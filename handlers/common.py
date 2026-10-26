@@ -31,18 +31,50 @@ async def cmd_start(message: Message, state: FSMContext):
     """Команда /start: приветствие и инициализация пользователя"""
     await state.clear()
     
-    # Проверяем реферальный аргумент (например, /start ref_123456)
+    # Проверяем аргументы /start (реферал или промокод)
     ref_arg = None
+    promo_arg = None
     parts = (message.text or "").split()
-    if len(parts) > 1 and parts[1].startswith("ref_"):
-        ref_arg = parts[1].replace("ref_", "")
+    if len(parts) > 1:
+        arg_val = parts[1].strip()
+        if arg_val.startswith("ref_"):
+            ref_arg = arg_val.replace("ref_", "")
+        elif arg_val.startswith("promo_"):
+            promo_arg = arg_val.replace("promo_", "").upper()
+        else:
+            cand = arg_val.upper()
+            if await db.promo_code_exists(cand):
+                promo_arg = cand
+
+    initial_source = f"promo:{promo_arg}" if promo_arg else (f"ref_{ref_arg}" if ref_arg else "direct")
 
     user = await db.get_or_create_user(
         user_id=message.from_user.id,
         username=message.from_user.username,
-        first_name=message.from_user.first_name
+        first_name=message.from_user.first_name,
+        source=initial_source,
+        first_promo_code=promo_arg
     )
     lang = user["native_lang"]
+
+    # Если передан промокод по ссылке, активируем его
+    if promo_arg:
+        p_ok, p_status, p_days, p_until = await db.activate_promo_code(message.from_user.id, promo_arg)
+        if p_ok:
+            until_disp = p_until[:10] if p_until and p_until != "lifetime" else ""
+            if lang == "ru":
+                p_text = (
+                    f"🎁 *Промокод {promo_arg} успешно применен!*\n"
+                    f"Тебе начислено *+{p_days} дня(ей)* Stork Premium ⭐️\n"
+                    f"Премиум действует до: *{until_disp}*"
+                )
+            else:
+                p_text = (
+                    f"🎁 *Promo code {promo_arg} successfully activated!*\n"
+                    f"You received *+{p_days} day(s)* of Stork Premium ⭐️\n"
+                    f"Premium valid until: *{until_disp}*"
+                )
+            await message.answer(p_text, parse_mode="Markdown")
 
     if user.get("is_new") and ref_arg:
         try:

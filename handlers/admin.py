@@ -58,14 +58,17 @@ def get_admin_main_keyboard(role: str, notify_enabled: bool) -> InlineKeyboardMa
     if role in ("super_admin", "admin"):
         buttons.append([
             InlineKeyboardButton(text="📊 Аналитика и метрики", callback_data="admin_stats"),
-            InlineKeyboardButton(text="👤 Найти пользователя", callback_data="admin_user_search")
+            InlineKeyboardButton(text="👥 Все пользователи", callback_data="adm_users:all:1")
         ])
         buttons.append([
-            InlineKeyboardButton(text="🎟 Промокоды", callback_data="admin_promos"),
-            InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast_menu")
+            InlineKeyboardButton(text="👤 Найти пользователя", callback_data="admin_user_search"),
+            InlineKeyboardButton(text="🎟 Промокоды", callback_data="admin_promos")
         ])
         buttons.append([
-            InlineKeyboardButton(text="💾 Скачать бэкап", callback_data="admin_backup"),
+            InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast_menu"),
+            InlineKeyboardButton(text="💾 Скачать бэкап", callback_data="admin_backup")
+        ])
+        buttons.append([
             InlineKeyboardButton(text="📤 Бэкап в чат", callback_data="admin_backup_channel")
         ])
         if role == "super_admin":
@@ -74,7 +77,8 @@ def get_admin_main_keyboard(role: str, notify_enabled: bool) -> InlineKeyboardMa
             ])
     elif role == "analyst":
         buttons.append([
-            InlineKeyboardButton(text="📊 Аналитика и метрики", callback_data="admin_stats")
+            InlineKeyboardButton(text="📊 Аналитика и метрики", callback_data="admin_stats"),
+            InlineKeyboardButton(text="👥 Все пользователи", callback_data="adm_users:all:1")
         ])
     elif role == "broadcaster":
         buttons.append([
@@ -93,6 +97,103 @@ def get_admin_back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 В главное меню админки", callback_data="admin_main")]
     ])
+
+def get_admin_users_keyboard(filter_source: str, page: int, total_pages: int, users: list) -> InlineKeyboardMarkup:
+    flt = (filter_source or "all").lower()
+
+    def mark(label: str, target: str) -> str:
+        return f"• {label} •" if flt == target else label
+
+    buttons = [
+        [
+            InlineKeyboardButton(text=mark("Все", "all"), callback_data="adm_users:all:1"),
+            InlineKeyboardButton(text=mark("SHORTS", "shorts"), callback_data="adm_users:shorts:1"),
+            InlineKeyboardButton(text=mark("STREAM", "stream"), callback_data="adm_users:stream:1"),
+        ],
+        [
+            InlineKeyboardButton(text=mark("👥 Рефералы", "ref"), callback_data="adm_users:ref:1"),
+            InlineKeyboardButton(text=mark("🚀 Без промо", "direct"), callback_data="adm_users:direct:1"),
+        ]
+    ]
+
+    # Быстрый переход в карточку пользователя
+    user_btn_rows = []
+    current_row = []
+    for u in users:
+        uid = u["user_id"]
+        uname = u.get("username")
+        fname = (u.get("first_name") or "").strip()
+        label = f"👤 {fname[:10]}" if fname else (f"@{uname[:10]}" if uname else f"ID {uid}")
+        current_row.append(InlineKeyboardButton(text=label, callback_data=f"adm_user_view:{uid}"))
+        if len(current_row) == 2:
+            user_btn_rows.append(current_row)
+            current_row = []
+    if current_row:
+        user_btn_rows.append(current_row)
+    buttons.extend(user_btn_rows)
+
+    # Навигация страниц
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"adm_users:{flt}:{page - 1}"))
+    nav_row.append(InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="adm_noop"))
+    if page < total_pages:
+        nav_row.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"adm_users:{flt}:{page + 1}"))
+    buttons.append(nav_row)
+
+    buttons.append([
+        InlineKeyboardButton(text="🔍 Найти по ID/Нику", callback_data="admin_user_search"),
+        InlineKeyboardButton(text="🔙 В админку", callback_data="admin_main")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def format_user_source_badge(u: dict) -> str:
+    source = (u.get("source") or "direct").strip()
+    first_promo = u.get("first_promo_code") or u.get("earliest_promo")
+    inviter_id = u.get("inviter_id") or u.get("referred_by")
+
+    if source.startswith("promo:"):
+        code_name = source.replace("promo:", "").upper()
+        return f"🎟 Ссылка промокода `{code_name}`"
+    elif source.upper() in ("SHORTS", "STREAM"):
+        return f"🎟 Промокод `{source.upper()}`"
+    elif source.startswith("ref_") or inviter_id:
+        ref_id = source.replace("ref_", "") if source.startswith("ref_") else inviter_id
+        return f"👥 Реферал от ID `{ref_id}`"
+    elif first_promo:
+        return f"🌐 Прямой переход (активировал промокод)"
+    else:
+        return "🚀 Прямой переход (органика)"
+
+def format_user_entry_item(i: int, u: dict) -> str:
+    uid = u["user_id"]
+    uname = f"@{u['username']}" if u.get("username") else "без никнейма"
+    fname = (u.get("first_name") or "Пользователь").strip()
+
+    is_premium = bool(u.get("is_premium"))
+    is_vip = bool(u.get("is_lifetime_vip"))
+    prem_until = u.get("premium_until")
+
+    if is_vip:
+        status_icon = "👑 Lifetime VIP"
+    elif is_premium and prem_until:
+        status_icon = f"⭐️ До {prem_until[:10]}"
+    else:
+        status_icon = "🆓 Free"
+
+    first_promo = u.get("first_promo_code") or u.get("earliest_promo")
+    promo_badge = f"*{first_promo}*" if first_promo else "нет"
+    source_badge = format_user_source_badge(u)
+    created = u.get("created_at") or ""
+    created_str = f" | 📅 {created[:10]}" if len(created) >= 10 else ""
+
+    return (
+        f"{i}. *{fname}* ({uname})\n"
+        f"   └ ID: `{uid}`{created_str}\n"
+        f"   └ 🌐 Откуда: {source_badge}\n"
+        f"   └ 🎟 Первый промокод: {promo_badge}\n"
+        f"   └ 🏆 {u.get('score', 0)} XP | 🔥 Стрик: {u.get('streak', 0)} дн. | {status_icon}"
+    )
 
 def get_user_actions_keyboard(user_id: int, is_premium: bool) -> InlineKeyboardMarkup:
     buttons = [
@@ -113,6 +214,7 @@ def get_user_actions_keyboard(user_id: int, is_premium: bool) -> InlineKeyboardM
             InlineKeyboardButton(text="🚫 Отозвать Premium", callback_data=f"adm_revoke:{user_id}")
         ])
     buttons.append([
+        InlineKeyboardButton(text="👥 К списку пользователей", callback_data="adm_users:all:1"),
         InlineKeyboardButton(text="🔙 Назад в админку", callback_data="admin_main")
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -552,6 +654,81 @@ async def cb_admin_stats(callback: CallbackQuery):
     await callback.answer("Данные обновлены")
 
 # ==========================================
+# Раздел: Просмотр всех пользователей и атрибуция
+# ==========================================
+
+@router.callback_query(F.data.startswith("adm_users:"))
+async def cb_adm_users_list(callback: CallbackQuery):
+    """Постраничный список пользователей с фильтрами и атрибуцией"""
+    user_id = callback.from_user.id
+    if not (await db.can_manage_users(user_id) or await db.can_view_stats(user_id)):
+        await callback.answer("У вас нет прав для просмотра списка пользователей", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    flt = parts[1] if len(parts) > 1 else "all"
+    try:
+        page = int(parts[2]) if len(parts) > 2 else 1
+    except ValueError:
+        page = 1
+
+    users, total_cnt, total_pages = await db.get_all_users_admin(filter_source=flt, page=page, per_page=5)
+
+    filter_names = {
+        "all": "Все пользователи",
+        "shorts": "Только SHORTS (YouTube/TikTok)",
+        "stream": "Только STREAM (24/7 Стрим)",
+        "promo": "Любой промокод",
+        "ref": "Реферальные переходы",
+        "direct": "Прямые переходы (без промо)"
+    }
+    flt_title = filter_names.get(flt, "Все пользователи")
+
+    lines = [
+        f"👥 *Список пользователей бота*\n",
+        f"Фильтр: *{flt_title}*",
+        f"Всего найдено: *{total_cnt}* (Страница {page} из {total_pages})\n"
+    ]
+
+    if not users:
+        lines.append("Пользователи в этой категории пока не найдены.")
+    else:
+        for idx, u in enumerate(users, start=(page - 1) * 5 + 1):
+            lines.append(format_user_entry_item(idx, u))
+
+    lines.append("\nНажмите на кнопку с именем ниже, чтобы открыть карточку управления:")
+    text = "\n".join(lines)
+    kb = get_admin_users_keyboard(flt, page, total_pages, users)
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_user_view:"))
+async def cb_adm_user_view(callback: CallbackQuery):
+    """Быстрый переход в карточку пользователя из общего списка"""
+    user_id = callback.from_user.id
+    if not (await db.can_manage_users(user_id) or await db.can_view_stats(user_id)):
+        await callback.answer("У вас нет прав для просмотра пользователя", show_alert=True)
+        return
+
+    uid_str = callback.data.split(":")[1]
+    user_info = await db.get_user_admin_info(uid_str)
+    if not user_info:
+        await callback.answer("Пользователь не найден в базе данных", show_alert=True)
+        return
+
+    await show_user_card(callback.message, user_info)
+    await callback.answer()
+
+@router.callback_query(F.data == "adm_noop")
+async def cb_adm_noop(callback: CallbackQuery):
+    """Пустой клик по индикатору страницы"""
+    await callback.answer()
+
+# ==========================================
 # Раздел: Управление пользователем
 # ==========================================
 
@@ -616,15 +793,21 @@ async def show_user_card(target_msg: Message, u: dict):
     else:
         status_text = "🆓 Бесплатный тариф"
 
-    created = u.get("created_at") or "—"
+    created = u.get("created_at") or "не указана"
     created_str = created[:10] if len(created) >= 10 else created
+
+    source_badge = format_user_source_badge(u)
+    first_promo = u.get("first_promo_code") or u.get("earliest_promo")
+    first_promo_str = f"*{first_promo}*" if first_promo else "не активировал"
 
     card_text = (
         f"👤 *Карточка пользователя*\n\n"
         f"• Имя: *{full_name}*\n"
         f"• User ID: `{uid}`\n"
         f"• Username: {username}\n"
-        f"• Язык интерфейса: *{u.get('language', 'ru')}*\n"
+        f"• Язык интерфейса: *{u.get('native_lang') or u.get('language') or 'ru'}*\n"
+        f"• 🌐 Откуда пришел: {source_badge}\n"
+        f"• 🎟 Первый промокод: {first_promo_str}\n"
         f"• Статус Premium: *{status_text}*\n"
         f"• Тип подписки: `{sub_type}`\n"
         f"• Изучено слов: *{u.get('words_learned', 0)}* из {u.get('words_total', 0)}\n"

@@ -53,6 +53,14 @@ PROMO_CODES: Dict[str, Dict[str, Any]] = {
         "days": 30,
         "description": "Свободный доступ на 30 дней",
     },
+    "SHORTS": {
+        "days": 3,
+        "description": "Бонус из YouTube Shorts и TikTok на 3 дня",
+    },
+    "STREAM": {
+        "days": 3,
+        "description": "Бонус для зрителей 24/7 стрима на 3 дня",
+    },
 }
 
 
